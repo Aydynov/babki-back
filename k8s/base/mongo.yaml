@@ -1,0 +1,172 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: mongo
+  namespace: babki
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector:
+    app.kubernetes.io/name: mongo
+    app.kubernetes.io/instance: babki
+  ports:
+    - name: mongodb
+      port: 27017
+      targetPort: mongodb
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mongo
+  namespace: babki
+spec:
+  serviceName: mongo
+  replicas: 3
+  podManagementPolicy: Parallel
+  selector:
+    matchLabels: &mongoLabels
+      app.kubernetes.io/name: mongo
+      app.kubernetes.io/instance: babki
+  template:
+    metadata:
+      labels: *mongoLabels
+    spec:
+      terminationGracePeriodSeconds: 60
+      tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels: *mongoLabels
+              topologyKey: kubernetes.io/hostname
+      containers:
+        - name: mongo
+          image: mongo:7
+          imagePullPolicy: IfNotPresent
+          args: [mongod, --replSet, rs0, --bind_ip_all]
+          ports:
+            - name: mongodb
+              containerPort: 27017
+          volumeMounts:
+            - name: data
+              mountPath: /data/db
+          resources:
+            requests: { cpu: 100m, memory: 256Mi }
+            limits: { cpu: 500m, memory: 512Mi }
+          startupProbe: &mongoProbe
+            exec:
+              command: [mongosh, --quiet, --eval, 'quit(db.adminCommand({ ping: 1 }).ok ? 0 : 1)']
+            periodSeconds: 2
+            failureThreshold: 60
+          readinessProbe:
+            <<: *mongoProbe
+            periodSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            <<: *mongoProbe
+            periodSeconds: 10
+            failureThreshold: 6
+  volumeClaimTemplates:
+    - metadata: { name: data }
+      spec:
+        storageClassName: standard
+        accessModes: [ReadWriteOnce]
+        resources:
+          requests: { storage: 2Gi }
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: mongo-bootstrap
+  namespace: babki
+spec:
+  activeDeadlineSeconds: 300
+  backoffLimit: 2
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: mongo-bootstrap
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: bootstrap
+          image: mongo:7
+          imagePullPolicy: IfNotPresent
+          command: [bash, -c]
+          args:
+            - |
+              set -Eeuo pipefail
+              members=(
+                mongo-0.mongo.babki.svc.cluster.local:27017
+                mongo-1.mongo.babki.svc.cluster.local:27017
+                mongo-2.mongo.babki.svc.cluster.local:27017
+              )
+              member_wait_timeout_seconds=120
+              server_selection_timeout_ms=2000
+              member_uris=()
+              for member in "${members[@]}"; do
+                member_uri="mongodb://${member}/admin?serverSelectionTimeoutMS=${server_selection_timeout_ms}"
+                member_uris+=("$member_uri")
+                member_deadline=$((SECONDS + member_wait_timeout_seconds))
+                until mongosh "$member_uri" --quiet --eval 'quit(db.adminCommand({ ping: 1 }).ok ? 0 : 1)'; do
+                  if ((SECONDS >= member_deadline)); then
+                    echo "MongoDB member unavailable before timeout: $member" >&2
+                    exit 1
+                  fi
+                  sleep 2
+                done
+              done
+              state="$({ mongosh --host "${members[0]}" --quiet --eval '
+                try { print(rs.status().set); } catch (error) {
+                  if (error.code === 94 || error.codeName === "NotYetInitialized") { print("UNINITIALIZED"); } else { throw error; }
+                }
+              '; } | tail -n 1)"
+              if [[ "$state" == 'UNINITIALIZED' ]]; then
+                mongosh --host "${members[0]}" --quiet --eval '
+                  rs.initiate({
+                    _id: "rs0",
+                    members: [
+                      { _id: 0, host: "mongo-0.mongo.babki.svc.cluster.local:27017" },
+                      { _id: 1, host: "mongo-1.mongo.babki.svc.cluster.local:27017" },
+                      { _id: 2, host: "mongo-2.mongo.babki.svc.cluster.local:27017" }
+                    ]
+                  })
+                '
+              elif [[ "$state" != 'rs0' ]]; then
+                echo "Unexpected replica set: $state" >&2; exit 1
+              fi
+              mongosh --host "${members[0]}" --quiet --eval '
+                const expected = [
+                  "mongo-0.mongo.babki.svc.cluster.local:27017",
+                  "mongo-1.mongo.babki.svc.cluster.local:27017",
+                  "mongo-2.mongo.babki.svc.cluster.local:27017"
+                ];
+                const config = rs.conf();
+                const actual = config.members.map((member) => member.host).sort();
+                if (config._id !== "rs0" || actual.join(",") !== expected.sort().join(",")) {
+                  throw new Error(`Unexpected replica-set configuration: ${tojson(config)}`);
+                }
+              '
+              for _ in $(seq 1 90); do
+                for member_uri in "${member_uris[@]}"; do
+                  if mongosh "$member_uri" --quiet --eval 'quit(db.hello().isWritablePrimary ? 0 : 1)'; then exit 0; fi
+                done
+                sleep 2
+              done
+              echo 'Replica set did not elect a primary in time.' >&2
+              exit 1
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: mongo
+  namespace: babki
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: mongo
+      app.kubernetes.io/instance: babki

@@ -1,0 +1,99 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: babki-api
+  namespace: babki
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: babki-api
+  ports:
+    - name: http
+      port: 5001
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: babki-api
+  namespace: babki
+spec:
+  replicas: 2
+  selector:
+    matchLabels: &apiLabels
+      app.kubernetes.io/name: babki-api
+  template:
+    metadata:
+      labels: *apiLabels
+    spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels: *apiLabels
+                topologyKey: kubernetes.io/hostname
+      initContainers:
+        - name: wait-for-mongo-primary
+          image: mongo:7
+          imagePullPolicy: IfNotPresent
+          command: [bash, -c]
+          args:
+            - |
+              set -Eeuo pipefail
+              uri='mongodb://mongo-0.mongo.babki.svc.cluster.local:27017,mongo-1.mongo.babki.svc.cluster.local:27017,mongo-2.mongo.babki.svc.cluster.local:27017/admin?replicaSet=rs0'
+              until mongosh "$uri" --quiet --eval 'quit(db.hello().isWritablePrimary ? 0 : 1)'; do sleep 2; done
+      containers:
+        - name: api
+          image: babki-back-api:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 5001
+          envFrom:
+            - configMapRef: { name: babki-api-config }
+          volumeMounts:
+            - name: secrets
+              mountPath: /app/config/secrets/kubernetes.json
+              subPath: kubernetes.json
+              readOnly: true
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+          resources:
+            requests: { cpu: 100m, memory: 128Mi }
+            limits: { cpu: 500m, memory: 512Mi }
+          startupProbe: &apiProbe
+            httpGet: { path: /api/v1, port: http }
+            periodSeconds: 2
+            failureThreshold: 60
+          readinessProbe:
+            <<: *apiProbe
+            periodSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            <<: *apiProbe
+            periodSeconds: 10
+            failureThreshold: 6
+      volumes:
+        - name: secrets
+          secret:
+            secretName: babki-api-secrets
+            items:
+              - key: kubernetes.json
+                path: kubernetes.json
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: babki-api
+  namespace: babki
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: babki-api

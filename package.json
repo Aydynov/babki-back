@@ -19,7 +19,12 @@
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
-    "test:e2e": "jest --config ./test/jest-e2e.json"
+    "test:e2e": "jest --config ./test/jest-e2e.json",
+    "k8s:test": "ruby scripts/tests/k8s-manifest.spec.rb && bash scripts/tests/deploy-k8s-local.spec.sh",
+    "k8s:bootstrap": "bash scripts/bootstrap-k8s-local.sh",
+    "k8s:deploy": "bash scripts/deploy-k8s-local.sh",
+    "k8s:verify": "bash scripts/verify-k8s-local.sh",
+    "k8s:local": "bash scripts/k8s-local.sh"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.1",

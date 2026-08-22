@@ -356,6 +356,12 @@ The repo includes a containerized local stack:
 - `scripts/generate-secrets.mjs`: creates the ignored secrets file selected by `.env` without printing values
 - `config/secrets/docker-compose.example.json`: non-runnable structure example only
 
+### Local Kubernetes
+
+The three-node Docker Desktop deployment uses a MongoDB replica set, NGINX
+Gateway Fabric, and default-deny NetworkPolicy. See
+[`docs/kubernetes-local-deployment.md`](docs/kubernetes-local-deployment.md).
+
 ### Local quick start
 
 Install the Docker-specific version of the same two runtime files, then generate
