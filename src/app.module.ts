@@ -16,6 +16,7 @@ import { ExpenseCategoriesModule } from './modules/expense-categories/expense-ca
 import { ReportsModule } from './modules/reports/reports.module';
 import { UsersModule } from './modules/users/users.module';
 import { PlansModule } from './modules/plans/plans.module';
+import { GroupsModule } from './modules/groups/groups.module';
 import { APP_GUARD } from '@nestjs/core';
 
 @Module({
@@ -41,6 +42,7 @@ import { APP_GUARD } from '@nestjs/core';
     DebtTransactionsModule,
     ExpenseLimitsModule,
     ReportsModule,
+    GroupsModule,
   ],
   controllers: [AppController],
   providers: [

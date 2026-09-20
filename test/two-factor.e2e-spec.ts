@@ -7,6 +7,7 @@ import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import type { INestApplication } from '@nestjs/common';
 import type { Connection } from 'mongoose';
 import request from 'supertest';
+import { startTestReplicaSet } from './helpers/mongo-replica';
 import { AppModule } from '../src/app.module';
 import { HttpExceptionFilter } from '../src/common/filters/http-exception.filter';
 import { TotpService } from '../src/modules/auth/services/totp.service';
@@ -15,11 +16,14 @@ describe('TOTP two-factor authentication (e2e)', () => {
   const databaseName = `babki_totp_e2e_${process.pid}`;
   const password = 'correct horse battery staple';
   const secretsPath = `.temp/babki-totp-e2e-${process.pid}.json`;
+  let replica: Awaited<ReturnType<typeof startTestReplicaSet>>;
+  const previousEnv = { ...process.env };
   let app: INestApplication;
   let connection: Connection;
   let totpService: TotpService;
 
   beforeAll(async () => {
+    replica = await startTestReplicaSet();
     process.env.NODE_ENV = 'test';
     process.env.MONGO_DB_NAME = databaseName;
     process.env.SECRETS_FILE_PATH = secretsPath;
@@ -28,6 +32,10 @@ describe('TOTP two-factor authentication (e2e)', () => {
     writeFileSync(
       secretsPath,
       JSON.stringify({
+        MONGO_URI: replica.uri.replace(
+          '/babki_groups_test?',
+          `/${databaseName}?`,
+        ),
         JWT_SECRET: randomBytes(48).toString('base64url'),
         TOTP_ENCRYPTION_ACTIVE_KEY_ID: 'e2e',
         TOTP_ENCRYPTION_KEYS: {
@@ -52,6 +60,11 @@ describe('TOTP two-factor authentication (e2e)', () => {
     }
     await app?.close();
     rmSync(secretsPath, { force: true });
+    await replica?.close();
+    for (const key of Object.keys(process.env)) {
+      if (!(key in previousEnv)) delete process.env[key];
+    }
+    Object.assign(process.env, previousEnv);
   }, 30_000);
 
   it('enforces atomic TOTP and recovery login and revokes the enrollment JWT', async () => {
