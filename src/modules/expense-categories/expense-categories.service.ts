@@ -1,4 +1,8 @@
 import {
+  personalBudget,
+  personalResponse,
+} from 'src/common/utils/personal-budget.util';
+import {
   ConflictException,
   Injectable,
   NotFoundException,
@@ -32,10 +36,10 @@ export class ExpenseCategoriesService {
     try {
       const category = await this.expenseCategoryModel.create({
         ...createExpenseCategoryDto,
-        userId: new Types.ObjectId(userId),
+        ...personalBudget(new Types.ObjectId(userId)),
       });
 
-      return category.toObject();
+      return personalResponse(category.toObject());
     } catch (error) {
       this.handleDuplicateName(error);
     }
@@ -44,18 +48,19 @@ export class ExpenseCategoriesService {
   async findAll(userId: string) {
     await this.ensureUserExists(userId);
 
-    return this.expenseCategoryModel
-      .find({ userId: new Types.ObjectId(userId) })
+    const categories = await this.expenseCategoryModel
+      .find({ ...personalBudget(new Types.ObjectId(userId)) })
       .sort({ createdAt: -1 })
       .lean()
       .exec();
+    return categories.map(personalResponse);
   }
 
   async findOne(userId: string, categoryId: string) {
     const category = await this.expenseCategoryModel
       .findOne({
         _id: new Types.ObjectId(categoryId),
-        userId: new Types.ObjectId(userId),
+        ...personalBudget(new Types.ObjectId(userId)),
       })
       .lean()
       .exec();
@@ -66,7 +71,7 @@ export class ExpenseCategoriesService {
       );
     }
 
-    return category;
+    return personalResponse(category);
   }
 
   async update(
@@ -77,7 +82,7 @@ export class ExpenseCategoriesService {
     try {
       const category = await this.expenseCategoryModel
         .findOneAndUpdate(
-          { _id: categoryId, userId: new Types.ObjectId(userId) },
+          { _id: categoryId, ...personalBudget(new Types.ObjectId(userId)) },
           updateExpenseCategoryDto,
           {
             returnDocument: 'after',
@@ -93,7 +98,7 @@ export class ExpenseCategoriesService {
         );
       }
 
-      return category;
+      return personalResponse(category);
     } catch (error) {
       this.handleDuplicateName(error);
     }
@@ -113,7 +118,10 @@ export class ExpenseCategoriesService {
     }
 
     await this.expenseCategoryModel
-      .deleteOne({ _id: foundCategory._id, userId: foundCategory.userId })
+      .deleteOne({
+        _id: foundCategory._id,
+        ...personalBudget(foundCategory.userId),
+      })
       .lean()
       .exec();
   }

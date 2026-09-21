@@ -1,5 +1,5 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { HydratedDocument, Types } from 'mongoose';
+import { HydratedDocument, Schema as MongooseSchema, Types } from 'mongoose';
 import { ExpenseCategory } from '../../expense-categories/schemas/expense-category.schema';
 import { User } from '../../users/schemas/user.schema';
 
@@ -7,10 +7,20 @@ export type ExpenseLimitDocument = HydratedDocument<ExpenseLimit>;
 
 @Schema({ timestamps: true })
 export class ExpenseLimit {
-  @Prop({ required: true, type: Types.ObjectId, ref: User.name })
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: User.name })
   userId: Types.ObjectId;
 
-  @Prop({ required: true, type: Types.ObjectId, ref: ExpenseCategory.name })
+  @Prop({ required: true, enum: ['user', 'group'] })
+  ownerType: 'user' | 'group';
+
+  @Prop({ required: true, type: MongooseSchema.Types.ObjectId })
+  ownerId: Types.ObjectId;
+
+  @Prop({
+    required: true,
+    type: MongooseSchema.Types.ObjectId,
+    ref: ExpenseCategory.name,
+  })
   category: Types.ObjectId;
 
   @Prop({ required: true })
@@ -24,3 +34,11 @@ export class ExpenseLimit {
 }
 
 export const ExpenseLimitSchema = SchemaFactory.createForClass(ExpenseLimit);
+
+ExpenseLimitSchema.index({
+  ownerType: 1,
+  ownerId: 1,
+  category: 1,
+  startDate: 1,
+  endDate: 1,
+});

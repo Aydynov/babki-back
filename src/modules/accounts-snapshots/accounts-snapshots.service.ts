@@ -1,3 +1,4 @@
+import { personalBudget } from 'src/common/utils/personal-budget.util';
 import {
   ConflictException,
   Injectable,
@@ -25,8 +26,17 @@ export class AccountsSnapshotsService {
     private readonly accountsModel: Model<AccountDocument>,
   ) {}
 
-  async findByAccountId(userId: string, accountId: string, date?: string) {
-    const foundAccountId = await this.ensureAccountExists(userId, accountId);
+  async findByAccountId(
+    userId: string,
+    accountId: string,
+    date?: string,
+    session?: ClientSession,
+  ) {
+    const foundAccountId = await this.ensureAccountExists(
+      userId,
+      accountId,
+      session,
+    );
     const requestedDate = date ? new Date(date) : new Date();
 
     const entity = await this.snapshotsModel
@@ -35,6 +45,7 @@ export class AccountsSnapshotsService {
         date: { $lte: requestedDate },
       })
       .sort({ date: -1, createdAt: -1 })
+      .session(session ?? null)
       .lean();
 
     if (!entity) {
@@ -65,11 +76,17 @@ export class AccountsSnapshotsService {
     date?: string,
     session?: ClientSession,
   ) {
-    const foundSnapshot = await this.findByAccountId(userId, accountId, date);
+    const foundSnapshot = await this.findByAccountId(
+      userId,
+      accountId,
+      date,
+      session,
+    );
     const resolvedDate = date ? new Date(date) : new Date();
     if (
       !foundSnapshot ||
-      foundSnapshot.date.getMonth() !== resolvedDate.getMonth()
+      foundSnapshot.date.getMonth() !== resolvedDate.getMonth() ||
+      foundSnapshot.date.getFullYear() !== resolvedDate.getFullYear()
     ) {
       const [createdSnapshot] = await this.snapshotsModel.create(
         [
@@ -90,15 +107,38 @@ export class AccountsSnapshotsService {
     userId: string,
     accountId: string,
     createSnapshotDto: CreateAccountSnapshotDto,
-  ) {
+    session?: ClientSession,
+  ): Promise<AccountSnapshotsDocument> {
+    if (!session) {
+      const ownedSession = await this.accountsModel.db.startSession();
+      try {
+        return await ownedSession.withTransaction(() =>
+          this.create(userId, accountId, createSnapshotDto, ownedSession),
+        );
+      } finally {
+        await ownedSession.endSession();
+      }
+    }
+    const locked = await this.accountsModel.updateOne(
+      { _id: accountId, ...personalBudget(userId) },
+      { $inc: { mutationVersion: 1 } },
+      { session },
+    );
+    if (!locked.matchedCount)
+      throw new NotFoundException(`Account ${accountId} not found.`);
     const createDtoInstance = plainToInstance(
       CreateAccountSnapshotDto,
       createSnapshotDto,
     );
-    const foundAccountId = await this.ensureAccountExists(userId, accountId);
+    const foundAccountId = await this.ensureAccountExists(
+      userId,
+      accountId,
+      session,
+    );
 
     const existingEntity = await this.snapshotsModel
       .findOne({ accountId: foundAccountId, date: createDtoInstance.date })
+      .session(session ?? null)
       .lean()
       .exec();
 
@@ -108,10 +148,11 @@ export class AccountsSnapshotsService {
       );
     }
 
-    return await this.snapshotsModel.create({
-      accountId: foundAccountId,
-      ...createDtoInstance,
-    });
+    const [snapshot] = await this.snapshotsModel.create(
+      [{ accountId: foundAccountId, ...createDtoInstance }],
+      { session },
+    );
+    return snapshot;
   }
 
   async recalculateSnapshotsFromDate(
@@ -137,14 +178,18 @@ export class AccountsSnapshotsService {
       );
     }
 
-    const foundAccountId = await this.ensureAccountExists(userId, accountId);
+    const foundAccountId = await this.ensureAccountExists(
+      userId,
+      accountId,
+      session,
+    );
 
     await this.snapshotsModel.updateMany(
       { accountId: foundAccountId, date: { $gte: entity.date } },
       [
         {
           $set: {
-            amount: { $add: ['$amount', updateDto.amount] },
+            amount: { $round: [{ $add: ['$amount', updateDto.amount] }, 2] },
           },
         },
       ],
@@ -157,7 +202,11 @@ export class AccountsSnapshotsService {
     accountId: string,
     session?: ClientSession,
   ) {
-    const foundAccountId = await this.ensureAccountExists(userId, accountId);
+    const foundAccountId = await this.ensureAccountExists(
+      userId,
+      accountId,
+      session,
+    );
     await this.snapshotsModel.deleteMany(
       { accountId: foundAccountId },
       { session },
@@ -197,11 +246,17 @@ export class AccountsSnapshotsService {
     ]);
   }
 
-  private async ensureAccountExists(userId: string, accountId: string) {
-    const accountEntity = await this.accountsModel.exists({
-      _id: accountId,
-      userId: new Types.ObjectId(userId),
-    });
+  private async ensureAccountExists(
+    userId: string,
+    accountId: string,
+    session?: ClientSession,
+  ) {
+    const accountEntity = await this.accountsModel
+      .exists({
+        _id: accountId,
+        ...personalBudget(new Types.ObjectId(userId)),
+      })
+      .session(session ?? null);
 
     if (!accountEntity) {
       throw new NotFoundException(
@@ -214,7 +269,7 @@ export class AccountsSnapshotsService {
 
   private async findAccounts(userId: string) {
     return this.accountsModel
-      .find({ userId: new Types.ObjectId(userId) })
+      .find({ ...personalBudget(new Types.ObjectId(userId)) })
       .lean();
   }
 }

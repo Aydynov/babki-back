@@ -1,3 +1,4 @@
+import { effectivePermissions, GroupPermissions } from './group-permissions';
 import {
   BadRequestException,
   ConflictException,
@@ -9,7 +10,11 @@ import { ClientSession, Model, Types } from 'mongoose';
 import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 import { getPagination } from '../../common/utils/pagination.util';
 import { User } from '../users/schemas/user.schema';
-import { CreateGroupDto, UpdateGroupDto } from './dto/groups.dto';
+import {
+  CreateGroupDto,
+  UpdateGroupDto,
+  UpdateGroupPermissionsDto,
+} from './dto/groups.dto';
 import { GroupsAccessService } from './groups-access.service';
 import { GroupsTransactionService } from './groups-transaction.service';
 import { Group, GroupDocument } from './schemas/group.schema';
@@ -135,21 +140,63 @@ export class GroupsService {
         ...(user?.lastName !== undefined ? { lastName: user.lastName } : {}),
         role: String(group.ownerId) === String(m.userId) ? 'owner' : 'member',
         joinedAt: m.joinedAt,
+        permissions: effectivePermissions(
+          group.ownerId.equals(m.userId),
+          m.permissions,
+        ),
       };
     });
     return { items, total, page, limit };
+  }
+  async updatePermissions(
+    actorId: string,
+    groupId: string,
+    userId: string,
+    dto: UpdateGroupPermissionsDto,
+  ) {
+    if (Object.values(dto).every((value) => value === undefined))
+      throw new BadRequestException('At least one permission is required');
+    return this.mutate(actorId, groupId, true, async (group, session) => {
+      if (group.ownerId.equals(userId))
+        throw new ConflictException('Cannot change owner permissions');
+      const member = await this.memberships
+        .findOne({ groupId, userId, status: 'active' })
+        .session(session);
+      if (!member) throw new NotFoundException('Member not found');
+      const before = effectivePermissions(false, member.permissions);
+      const after = { ...before };
+      for (const key of Object.keys(before) as (keyof GroupPermissions)[]) {
+        if (dto[key] !== undefined) after[key] = dto[key] as boolean;
+      }
+      member.permissions = after;
+      await member.save({ session });
+      await this.event(
+        groupId,
+        userId,
+        actorId,
+        'permissions-updated',
+        session,
+        new Date(),
+        { before, after },
+      );
+      return after;
+    });
   }
   async leave(userId: string, groupId: string) {
     await this.mutate(userId, groupId, false, async (group, session) => {
       if (group.ownerId.equals(userId))
         throw new ConflictException('Transfer ownership before leaving');
       const now = new Date();
+      const before = await this.resetPermissions(groupId, userId, session);
       await this.memberships.updateOne(
         { groupId, userId, status: 'active' },
         { $set: { status: 'left', endedAt: now } },
         { session },
       );
-      await this.event(groupId, userId, userId, 'left', session, now);
+      await this.event(groupId, userId, userId, 'left', session, now, {
+        before,
+        after: effectivePermissions(false),
+      });
     });
   }
   async removeMember(actorId: string, groupId: string, userId: string) {
@@ -157,13 +204,17 @@ export class GroupsService {
       if (group.ownerId.equals(userId))
         throw new ConflictException('Cannot remove the owner');
       const now = new Date();
+      const before = await this.resetPermissions(groupId, userId, session);
       const result = await this.memberships.updateOne(
         { groupId, userId, status: 'active' },
         { $set: { status: 'removed', endedAt: now } },
         { session },
       );
       if (!result.matchedCount) throw new NotFoundException('Member not found');
-      await this.event(groupId, userId, actorId, 'removed', session, now);
+      await this.event(groupId, userId, actorId, 'removed', session, now, {
+        before,
+        after: effectivePermissions(false),
+      });
     });
   }
   async transferOwnership(actorId: string, groupId: string, userId: string) {
@@ -176,6 +227,16 @@ export class GroupsService {
           .session(session))
       )
         throw new NotFoundException('Member not found');
+      const previousPermissions = await this.resetPermissions(
+        groupId,
+        actorId,
+        session,
+      );
+      const nextPermissions = await this.resetPermissions(
+        groupId,
+        userId,
+        session,
+      );
       group.ownerId = new Types.ObjectId(userId);
       await group.save({ session });
       await this.events.create(
@@ -186,6 +247,18 @@ export class GroupsService {
             actorId,
             kind: 'ownership-transferred',
             occurredAt: new Date(),
+            permissionResets: [
+              {
+                userId: actorId,
+                before: previousPermissions,
+                after: effectivePermissions(false),
+              },
+              {
+                userId,
+                before: nextPermissions,
+                after: effectivePermissions(false),
+              },
+            ],
             previousOwnerId: actorId,
             newOwnerId: userId,
           },
@@ -194,6 +267,20 @@ export class GroupsService {
       );
       return this.toDto(group, actorId);
     });
+  }
+  private async resetPermissions(
+    groupId: string,
+    userId: string,
+    session: ClientSession,
+  ) {
+    const member = await this.memberships
+      .findOne({ groupId, userId, status: 'active' })
+      .session(session);
+    if (!member) throw new NotFoundException('Member not found');
+    const before = effectivePermissions(false, member.permissions);
+    member.permissions = effectivePermissions(false);
+    await member.save({ session });
+    return before;
   }
   private mutate<T>(
     userId: string,
@@ -216,9 +303,23 @@ export class GroupsService {
     kind: string,
     session: ClientSession,
     occurredAt: Date,
+    permissions?: { before: GroupPermissions; after: GroupPermissions },
   ) {
-    await this.events.create([{ groupId, userId, actorId, kind, occurredAt }], {
-      session,
-    });
+    await this.events.create(
+      [
+        {
+          groupId,
+          userId,
+          targetUserId: userId,
+          actorId,
+          kind,
+          occurredAt,
+          ...permissions,
+        },
+      ],
+      {
+        session,
+      },
+    );
   }
 }

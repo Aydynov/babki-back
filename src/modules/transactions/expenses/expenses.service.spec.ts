@@ -25,7 +25,10 @@ describe('ExpensesService', () => {
   const mockConnection = { startSession: jest.fn() };
   const expenseModel = { create: jest.fn() };
   const expenseCategoryModel = { exists: jest.fn() };
-  const transactionsService = { ensureUserExists: jest.fn() };
+  const transactionsService = {
+    ensureUserExists: jest.fn(),
+    lockAccounts: jest.fn(),
+  };
   const snapshotsService = {
     findOrCreateByAccountId: jest.fn(),
     recalculateSnapshotsFromDate: jest.fn(),
@@ -60,8 +63,10 @@ describe('ExpensesService', () => {
       userId: new Types.ObjectId(userId),
       accountId: new Types.ObjectId(accountId),
     });
-    expenseCategoryModel.exists.mockResolvedValue({
-      _id: new Types.ObjectId(categoryId),
+    expenseCategoryModel.exists.mockReturnValue({
+      session: jest
+        .fn()
+        .mockResolvedValue({ _id: new Types.ObjectId(categoryId) }),
     });
     snapshotsService.findOrCreateByAccountId.mockResolvedValue({
       _id: new Types.ObjectId(snapshotId),
@@ -95,8 +100,10 @@ describe('ExpensesService', () => {
       userId: new Types.ObjectId(userId),
       accountId: new Types.ObjectId(accountId),
     });
-    expenseCategoryModel.exists.mockResolvedValue({
-      _id: new Types.ObjectId(categoryId),
+    expenseCategoryModel.exists.mockReturnValue({
+      session: jest
+        .fn()
+        .mockResolvedValue({ _id: new Types.ObjectId(categoryId) }),
     });
     snapshotsService.findOrCreateByAccountId.mockResolvedValue({
       _id: new Types.ObjectId(snapshotId),
@@ -125,8 +132,10 @@ describe('ExpensesService', () => {
       userId: new Types.ObjectId(userId),
       accountId: new Types.ObjectId(accountId),
     });
-    expenseCategoryModel.exists.mockResolvedValue({
-      _id: new Types.ObjectId(categoryId),
+    expenseCategoryModel.exists.mockReturnValue({
+      session: jest
+        .fn()
+        .mockResolvedValue({ _id: new Types.ObjectId(categoryId) }),
     });
     snapshotsService.findOrCreateByAccountId.mockResolvedValue(null);
 
@@ -161,7 +170,11 @@ describe('ExpensesService', () => {
 
       // findOne chain (used internally by update)
       const findOneLean = jest.fn().mockResolvedValue(existingExpense);
-      const findOnePopulate = jest.fn().mockReturnValue({ lean: findOneLean });
+      const findOnePopulate = jest
+        .fn()
+        .mockReturnValue({
+          session: jest.fn().mockReturnValue({ lean: findOneLean }),
+        });
       expenseModel.findOne = jest
         .fn()
         .mockReturnValue({ populate: findOnePopulate });
@@ -185,7 +198,7 @@ describe('ExpensesService', () => {
         userId,
         existingExpense.accountId.toString(),
         expect.any(Object),
-        { amount: 100 },
+        { amount: -100 },
         mockInternalSession,
       );
       expect(expenseModel.findOneAndUpdate).toHaveBeenCalledWith(

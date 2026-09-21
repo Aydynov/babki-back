@@ -1,6 +1,7 @@
 import { Transform } from 'class-transformer';
 import {
   IsIn,
+  IsBoolean,
   IsMongoId,
   IsString,
   Length,
@@ -42,3 +43,15 @@ export class AcceptGroupInvitationDto {
   @IsString() @Matches(/^[A-Za-z0-9_-]{43}$/) token: string;
 }
 export class EmptyGroupBodyDto {}
+
+export class UpdateGroupPermissionsDto {
+  @ValidateIf((_object, value: unknown) => value !== undefined)
+  @IsBoolean()
+  manageAccounts?: unknown;
+  @ValidateIf((_object, value: unknown) => value !== undefined)
+  @IsBoolean()
+  manageCategories?: unknown;
+  @ValidateIf((_object, value: unknown) => value !== undefined)
+  @IsBoolean()
+  manageLimits?: unknown;
+}

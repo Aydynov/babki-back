@@ -1,3 +1,7 @@
+import {
+  personalBudget,
+  personalResponse,
+} from 'src/common/utils/personal-budget.util';
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectConnection, InjectModel } from '@nestjs/mongoose';
 import { ClientSession, Connection, Model, Types } from 'mongoose';
@@ -39,7 +43,16 @@ export class IncomesService {
     createIncomeDto: CreateIncomeDto,
     session: ClientSession,
   ) {
-    const foundIds = await this.transactionsService.ensureUserExists(userId);
+    const foundIds = await this.transactionsService.ensureUserExists(
+      userId,
+      'balance',
+      session,
+    );
+    await this.transactionsService.lockAccounts(
+      userId,
+      [foundIds.accountId.toString()],
+      session,
+    );
     const foundSnapshot = await this.snapshotsService.findOrCreateByAccountId(
       userId,
       foundIds.accountId.toString(),
@@ -56,7 +69,8 @@ export class IncomesService {
     const [createdIncome] = await this.incomeModel.create(
       [
         {
-          userId: foundIds.userId,
+          ...personalBudget(foundIds.userId),
+          createdBy: foundIds.userId,
           accountId: foundIds.accountId,
           snapshotId: foundSnapshot._id,
           ...createIncomeDto,
@@ -72,7 +86,7 @@ export class IncomesService {
       session,
     );
 
-    return createdIncome.toJSON();
+    return personalResponse(createdIncome.toJSON());
   }
 
   async findAll(userId: string, query: ListTransactionsQueryDto) {
@@ -96,12 +110,6 @@ export class IncomesService {
     transactionId: string,
     updateIncomeDto: UpdateIncomeDto,
   ) {
-    const income = await this.findOne(userId, transactionId);
-
-    if (!income) {
-      throw new NotFoundException(`Income ${transactionId} not found`);
-    }
-
     const updatePayload = Object.fromEntries(
       Object.entries({
         amount: updateIncomeDto.amount,
@@ -113,7 +121,23 @@ export class IncomesService {
     const session = await this.connection.startSession();
     try {
       return await session.withTransaction(async () => {
-        if (updateIncomeDto.amount) {
+        const income = await this.transactionsService.findOne(
+          userId,
+          transactionId,
+          this.incomeModel,
+          session,
+        );
+
+        if (!income) {
+          throw new NotFoundException(`Income ${transactionId} not found`);
+        }
+
+        await this.transactionsService.lockAccounts(
+          userId,
+          [income.accountId.toString()],
+          session,
+        );
+        if (updateIncomeDto.amount !== undefined) {
           const diffAmount = updateIncomeDto.amount - income.amount;
           await this.snapshotsService.recalculateSnapshotsFromDate(
             userId,
@@ -126,7 +150,10 @@ export class IncomesService {
 
         const updatedIncome = await this.incomeModel
           .findOneAndUpdate(
-            { _id: transactionId, userId: new Types.ObjectId(userId) },
+            {
+              _id: transactionId,
+              ...personalBudget(new Types.ObjectId(userId)),
+            },
             { $set: updatePayload },
             {
               returnDocument: 'after',
@@ -142,7 +169,7 @@ export class IncomesService {
           );
         }
 
-        return updatedIncome;
+        return personalResponse(updatedIncome);
       });
     } finally {
       await session.endSession();

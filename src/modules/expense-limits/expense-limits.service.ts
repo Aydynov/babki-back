@@ -1,4 +1,8 @@
 import {
+  personalBudget,
+  personalResponse,
+} from 'src/common/utils/personal-budget.util';
+import {
   ConflictException,
   Injectable,
   NotFoundException,
@@ -29,6 +33,8 @@ type FilterParams = {
 type FilterResult = {
   _id?: string;
   userId: Types.ObjectId;
+  ownerType: 'user';
+  ownerId: Types.ObjectId;
   category?: Types.ObjectId;
   startDate?: { $lte: Date } | Date;
   endDate?: { $gte: Date } | Date;
@@ -73,7 +79,7 @@ export class ExpenseLimitsService {
         startDate,
         endDate,
         category: foundCategory._id,
-        userId: foundCategory.userId,
+        ...personalBudget(foundCategory.userId),
       })
     ).populate('category');
 
@@ -120,7 +126,7 @@ export class ExpenseLimitsService {
   ) {
     const limit = await this.expenseLimitModel
       .findOneAndUpdate(
-        { _id: limitId, userId: new Types.ObjectId(userId) },
+        { _id: limitId, ...personalBudget(new Types.ObjectId(userId)) },
         updateExpenseLimitDto,
         {
           returnDocument: 'after',
@@ -141,10 +147,15 @@ export class ExpenseLimitsService {
   }
 
   async deleteEntity(userId: string, limitId: string) {
-    await this.expenseLimitModel
-      .deleteOne({ _id: limitId, userId: new Types.ObjectId(userId) })
+    const result = await this.expenseLimitModel
+      .deleteOne({
+        _id: limitId,
+        ...personalBudget(new Types.ObjectId(userId)),
+      })
       .lean()
       .exec();
+    if (!result.deletedCount)
+      throw new NotFoundException('Expense limit not found');
   }
 
   private async buildResponse(limit: ExpenseLimitDocument) {
@@ -155,13 +166,15 @@ export class ExpenseLimitsService {
     });
 
     return {
-      ...limit,
+      ...personalResponse(limit),
       rest: limit.total - expenseRevenue,
     };
   }
 
   private buildFilter(params: FilterParams) {
-    const filter: FilterResult = { userId: new Types.ObjectId(params.userId) };
+    const filter: FilterResult = {
+      ...personalBudget(new Types.ObjectId(params.userId)),
+    };
     if (params.limitId) {
       filter._id = params.limitId;
     }
@@ -185,16 +198,12 @@ export class ExpenseLimitsService {
     userId: string,
     queryDto: FindExpenseLimitRevenueQueryDto,
   ) {
-    try {
-      const revenue = await this.expensesService.findRevenue(userId, {
-        categoryId: queryDto.categoryId,
-        transactionType: 'expense',
-        fromDate: queryDto.startDate,
-        toDate: queryDto.endDate,
-      });
-      return revenue.totalRevenue;
-    } catch (_) {
-      return 0;
-    }
+    const revenue = await this.expensesService.findRevenue(userId, {
+      categoryId: queryDto.categoryId,
+      transactionType: 'expense',
+      fromDate: queryDto.startDate,
+      toDate: queryDto.endDate,
+    });
+    return revenue.totalRevenue;
   }
 }

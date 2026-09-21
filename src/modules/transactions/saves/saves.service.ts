@@ -1,4 +1,8 @@
 import {
+  personalBudget,
+  personalResponse,
+} from 'src/common/utils/personal-budget.util';
+import {
   BadRequestException,
   Injectable,
   NotFoundException,
@@ -23,16 +27,22 @@ export class SavesService {
   ) {}
 
   async create(userId: string, createSaveDto: CreateSaveDto) {
-    const foundIds = await this.transactionsService.ensureUserExists(
-      userId,
-      'saving',
-    );
     const transactionDate =
       createSaveDto.transactionDate ?? new Date().toISOString();
 
     const session = await this.connection.startSession();
     try {
       return await session.withTransaction(async () => {
+        const foundIds = await this.transactionsService.ensureUserExists(
+          userId,
+          'saving',
+          session,
+        );
+        await this.transactionsService.lockAccounts(
+          userId,
+          [foundIds.accountId.toString(), createSaveDto.sourceAccountId],
+          session,
+        );
         const foundSnapshot =
           await this.snapshotsService.findOrCreateByAccountId(
             userId,
@@ -68,7 +78,8 @@ export class SavesService {
         const [createdSave] = await this.saveModel.create(
           [
             {
-              userId: foundIds.userId,
+              ...personalBudget(foundIds.userId),
+              createdBy: foundIds.userId,
               accountId: foundIds.accountId,
               snapshotId: foundSnapshot._id,
               sourceAccountId: sourceSnapshot.accountId,
@@ -94,7 +105,7 @@ export class SavesService {
           session,
         );
 
-        return createdSave.toJSON();
+        return personalResponse(createdSave.toJSON());
       });
     } finally {
       await session.endSession();
@@ -132,43 +143,54 @@ export class SavesService {
     transactionId: string,
     updateIncomeDto: UpdateSaveDto,
   ) {
-    const save = await this.findOne(userId, transactionId);
-
-    if (!save) {
-      throw new NotFoundException(`Save ${transactionId} not found`);
-    }
-
-    const updatePayload = Object.fromEntries(
-      Object.entries({
-        amount: updateIncomeDto.amount,
-        description: updateIncomeDto.description,
-      }).filter(([, value]) => value !== undefined),
-    );
-
-    let diffAmount: number | undefined;
-    if (updateIncomeDto.amount) {
-      diffAmount = updateIncomeDto.amount - save.amount;
-
-      const sourceSnapshot = await this.snapshotsService.findByAccountId(
-        userId,
-        save.sourceAccountId.toString(),
-        save.transactionDate.toString(),
-      );
-
-      if (!sourceSnapshot) {
-        throw new NotFoundException(
-          `Snapshot for account ${save.sourceAccountId.toString()} not found.`,
-        );
-      }
-
-      if (sourceSnapshot.amount < diffAmount) {
-        throw new BadRequestException('Insufficient funds');
-      }
-    }
-
     const session = await this.connection.startSession();
     try {
       return await session.withTransaction(async () => {
+        const save = (await this.transactionsService.findOne(
+          userId,
+          transactionId,
+          this.saveModel,
+          session,
+        )) as SaveDocument;
+
+        if (!save) {
+          throw new NotFoundException(`Save ${transactionId} not found`);
+        }
+
+        await this.transactionsService.lockAccounts(
+          userId,
+          [save.accountId.toString(), save.sourceAccountId.toString()],
+          session,
+        );
+        const updatePayload = Object.fromEntries(
+          Object.entries({
+            amount: updateIncomeDto.amount,
+            description: updateIncomeDto.description,
+          }).filter(([, value]) => value !== undefined),
+        );
+
+        let diffAmount: number | undefined;
+        if (updateIncomeDto.amount !== undefined) {
+          diffAmount = updateIncomeDto.amount - save.amount;
+
+          const sourceSnapshot = await this.snapshotsService.findByAccountId(
+            userId,
+            save.sourceAccountId.toString(),
+            save.transactionDate.toString(),
+            session,
+          );
+
+          if (!sourceSnapshot) {
+            throw new NotFoundException(
+              `Snapshot for account ${save.sourceAccountId.toString()} not found.`,
+            );
+          }
+
+          if (sourceSnapshot.amount < diffAmount) {
+            throw new BadRequestException('Insufficient funds');
+          }
+        }
+
         if (diffAmount !== undefined) {
           await this.snapshotsService.recalculateSnapshotsFromDate(
             userId,
@@ -189,7 +211,10 @@ export class SavesService {
         // TODO Проверить с пустыми значениями для удаления
         const updatedSave = await this.saveModel
           .findOneAndUpdate(
-            { _id: transactionId, userId: new Types.ObjectId(userId) },
+            {
+              _id: transactionId,
+              ...personalBudget(new Types.ObjectId(userId)),
+            },
             { $set: updatePayload },
             {
               returnDocument: 'after',
@@ -205,7 +230,7 @@ export class SavesService {
           );
         }
 
-        return updatedSave;
+        return personalResponse(updatedSave);
       });
     } finally {
       await session.endSession();

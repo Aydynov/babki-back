@@ -1,5 +1,5 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { HydratedDocument, Types } from 'mongoose';
+import { HydratedDocument, Schema as MongooseSchema, Types } from 'mongoose';
 import { Transaction } from './transaction.schema';
 import { ExpenseCategory } from 'src/modules/expense-categories/schemas/expense-category.schema';
 
@@ -21,7 +21,14 @@ export const ExpenseItemSchema = SchemaFactory.createForClass(ExpenseItem);
 
 @Schema()
 export class Expense extends Transaction {
-  @Prop({ required: true, type: Types.ObjectId, ref: ExpenseCategory.name })
+  @Prop({ required: true, type: MongooseSchema.Types.ObjectId })
+  participantId: Types.ObjectId;
+
+  @Prop({
+    required: true,
+    type: MongooseSchema.Types.ObjectId,
+    ref: ExpenseCategory.name,
+  })
   category: Types.ObjectId;
 
   @Prop({ trim: true })

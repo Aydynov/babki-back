@@ -88,6 +88,11 @@ describe('Groups HTTP contracts (real replica set)', () => {
         firstName: 'Ada',
         lastName: 'Test',
         role: 'owner',
+        permissions: {
+          manageAccounts: true,
+          manageCategories: true,
+          manageLimits: true,
+        },
         joinedAt: expect.any(String) as unknown,
       },
     ]);
@@ -464,8 +469,14 @@ describe('Groups HTTP contracts (real replica set)', () => {
     const snapshot = new Types.ObjectId();
     const category = new Types.ObjectId();
     await context.connection.collection('accounts').insertMany([
-      { _id: account, userId: owner, type: 'balance' },
-      { userId: owner, type: 'saving' },
+      {
+        _id: account,
+        userId: owner,
+        ownerType: 'user',
+        ownerId: owner,
+        type: 'balance',
+      },
+      { userId: owner, ownerType: 'user', ownerId: owner, type: 'saving' },
     ]);
     await context.connection.collection('accountsnapshots').insertOne({
       _id: snapshot,
@@ -477,11 +488,17 @@ describe('Groups HTTP contracts (real replica set)', () => {
     await context.connection.collection('expensecategories').insertOne({
       _id: category,
       userId: owner,
+      ownerType: 'user',
+      ownerId: owner,
       name: 'Food',
       isArchived: false,
     });
     await context.connection.collection('transactions').insertOne({
       userId: owner,
+      ownerType: 'user',
+      ownerId: owner,
+      createdBy: owner,
+      participantId: owner,
       accountId: account,
       snapshotId: snapshot,
       category,

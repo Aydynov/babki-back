@@ -1,3 +1,7 @@
+import {
+  personalBudget,
+  personalResponse,
+} from 'src/common/utils/personal-budget.util';
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectConnection, InjectModel } from '@nestjs/mongoose';
 import { ClientSession, Connection, Model, Types } from 'mongoose';
@@ -31,28 +35,11 @@ export class ExpensesService {
     createExpenseDto: CreateExpenseDto,
     session?: ClientSession,
   ) {
-    const [foundIds, foundCategoryId] = await Promise.all([
-      this.transactionsService.ensureUserExists(userId),
-      this.ensureCategoryExists(userId, createExpenseDto.categoryId),
-    ]);
-
-    // Validation reads run outside the caller's session intentionally — they are
-    // read-only and stable, and neither TransactionsService nor ensureCategoryExists
-    // accepts a session parameter.
-    if (session) {
-      return this._doCreate(
-        userId,
-        foundIds,
-        foundCategoryId,
-        createExpenseDto,
-        session,
-      );
-    }
-
+    if (session) return this._doCreate(userId, createExpenseDto, session);
     const s = await this.connection.startSession();
     try {
       return await s.withTransaction(() =>
-        this._doCreate(userId, foundIds, foundCategoryId, createExpenseDto, s),
+        this._doCreate(userId, createExpenseDto, s),
       );
     } finally {
       await s.endSession();
@@ -61,50 +48,57 @@ export class ExpensesService {
 
   private async _doCreate(
     userId: string,
-    foundIds: { userId: Types.ObjectId; accountId: Types.ObjectId },
-    foundCategoryId: Types.ObjectId,
-    createExpenseDto: CreateExpenseDto,
+    dto: CreateExpenseDto,
     session: ClientSession,
   ) {
-    const foundSnapshot = await this.snapshotsService.findOrCreateByAccountId(
+    const foundIds = await this.transactionsService.ensureUserExists(
       userId,
-      foundIds.accountId.toString(),
-      createExpenseDto.transactionDate,
+      'balance',
       session,
     );
-
-    if (!foundSnapshot) {
-      throw new NotFoundException(
-        `Snapshot for account ${foundIds.accountId.toString()} not found.`,
-      );
-    }
-
+    await this.transactionsService.lockAccounts(
+      userId,
+      [foundIds.accountId.toString()],
+      session,
+    );
+    const category = await this.ensureCategoryExists(
+      userId,
+      dto.categoryId,
+      session,
+    );
+    const snapshot = await this.snapshotsService.findOrCreateByAccountId(
+      userId,
+      foundIds.accountId.toString(),
+      dto.transactionDate,
+      session,
+    );
+    if (!snapshot) throw new NotFoundException('Snapshot not found.');
     const [expense] = await this.expenseModel.create(
       [
         {
-          userId: foundIds.userId,
+          ...personalBudget(foundIds.userId),
+          createdBy: foundIds.userId,
+          participantId: foundIds.userId,
           accountId: foundIds.accountId,
-          snapshotId: foundSnapshot._id,
-          category: foundCategoryId,
-          amount: createExpenseDto.amount,
-          transactionDate: createExpenseDto.transactionDate,
-          description: createExpenseDto.description,
-          merchant: createExpenseDto.merchant,
-          items: createExpenseDto.items ?? [],
+          snapshotId: snapshot._id,
+          category,
+          amount: dto.amount,
+          transactionDate: dto.transactionDate,
+          description: dto.description,
+          merchant: dto.merchant,
+          items: dto.items ?? [],
         },
       ],
       { session },
     );
-
     await this.snapshotsService.recalculateSnapshotsFromDate(
       userId,
-      foundSnapshot.accountId.toString(),
-      { date: createExpenseDto.transactionDate },
-      { amount: -createExpenseDto.amount },
+      foundIds.accountId.toString(),
+      { date: dto.transactionDate },
+      { amount: -dto.amount },
       session,
     );
-
-    return expense.populate('category');
+    return personalResponse(await expense.populate('category'));
   }
 
   // TODO Добавить сортировку в DTO
@@ -127,7 +121,7 @@ export class ExpensesService {
     ]);
 
     return {
-      items,
+      items: items.map(personalResponse),
       total,
       page,
       limit,
@@ -142,14 +136,19 @@ export class ExpensesService {
     return this.expenseModel.countDocuments(filter);
   }
 
-  async findOne(userId: string, expenseId: string) {
-    const foundIds = await this.transactionsService.ensureUserExists(userId);
+  async findOne(userId: string, expenseId: string, session?: ClientSession) {
+    const foundIds = await this.transactionsService.ensureUserExists(
+      userId,
+      'balance',
+      session,
+    );
     const foundExpense = await this.expenseModel
       .findOne({
         _id: expenseId,
-        userId: foundIds.userId,
+        ...personalBudget(foundIds.userId),
       })
       .populate('category')
+      .session(session ?? null)
       .lean();
 
     if (!foundExpense) {
@@ -158,7 +157,7 @@ export class ExpensesService {
       );
     }
 
-    return foundExpense;
+    return personalResponse(foundExpense);
   }
 
   async findRevenue(userId: string, query: ListExpensesQueryDto) {
@@ -174,30 +173,39 @@ export class ExpensesService {
     expenseId: string,
     updateExpenseDto: UpdateExpenseDto,
   ) {
-    const expense = await this.findOne(userId, expenseId);
-
-    if (!expense) {
-      throw new NotFoundException(`Expense ${expenseId} not found.`);
-    }
-
-    const foundCategoryId = updateExpenseDto.categoryId
-      ? await this.ensureCategoryExists(userId, updateExpenseDto.categoryId)
-      : undefined;
-    const updatePayload = Object.fromEntries(
-      Object.entries({
-        amount: updateExpenseDto.amount,
-        description: updateExpenseDto.description,
-        merchant: updateExpenseDto.merchant,
-        items: updateExpenseDto.items,
-        category: foundCategoryId,
-      }).filter(([, value]) => value !== undefined),
-    );
-
     const s = await this.connection.startSession();
     try {
       return await s.withTransaction(async () => {
-        if (updateExpenseDto.amount) {
-          const diffAmount = updateExpenseDto.amount - expense.amount;
+        const expense = await this.findOne(userId, expenseId, s);
+
+        if (!expense) {
+          throw new NotFoundException(`Expense ${expenseId} not found.`);
+        }
+
+        const foundCategoryId = updateExpenseDto.categoryId
+          ? await this.ensureCategoryExists(
+              userId,
+              updateExpenseDto.categoryId,
+              s,
+            )
+          : undefined;
+        const updatePayload = Object.fromEntries(
+          Object.entries({
+            amount: updateExpenseDto.amount,
+            description: updateExpenseDto.description,
+            merchant: updateExpenseDto.merchant,
+            items: updateExpenseDto.items,
+            category: foundCategoryId,
+          }).filter(([, value]) => value !== undefined),
+        );
+
+        await this.transactionsService.lockAccounts(
+          userId,
+          [expense.accountId.toString()],
+          s,
+        );
+        if (updateExpenseDto.amount !== undefined) {
+          const diffAmount = expense.amount - updateExpenseDto.amount;
           await this.snapshotsService.recalculateSnapshotsFromDate(
             userId,
             expense.accountId.toString(),
@@ -210,7 +218,7 @@ export class ExpensesService {
         // TODO Проверить с пустыми значениями для удаления
         const updatedExpense = await this.expenseModel
           .findOneAndUpdate(
-            { _id: expenseId, userId: new Types.ObjectId(userId) },
+            { _id: expenseId, ...personalBudget(new Types.ObjectId(userId)) },
             { $set: updatePayload },
             {
               returnDocument: 'after',
@@ -227,7 +235,7 @@ export class ExpensesService {
           );
         }
 
-        return updatedExpense;
+        return personalResponse(updatedExpense);
       });
     } finally {
       await s.endSession();
@@ -250,11 +258,17 @@ export class ExpensesService {
     };
   }
 
-  private async ensureCategoryExists(userId: string, categoryId: string) {
-    const foundCategory = await this.expenseCategoryModel.exists({
-      _id: categoryId,
-      userId: new Types.ObjectId(userId),
-    });
+  private async ensureCategoryExists(
+    userId: string,
+    categoryId: string,
+    session?: ClientSession,
+  ) {
+    const foundCategory = await this.expenseCategoryModel
+      .exists({
+        _id: categoryId,
+        ...personalBudget(new Types.ObjectId(userId)),
+      })
+      .session(session ?? null);
 
     if (!foundCategory) {
       throw new NotFoundException(

@@ -18,6 +18,7 @@ import {
   EmptyGroupBodyDto,
   TransferOwnershipDto,
   UpdateGroupDto,
+  UpdateGroupPermissionsDto,
 } from './dto/groups.dto';
 import { GroupsService } from './groups.service';
 import { GroupInvitationsService } from './group-invitations.service';
@@ -65,6 +66,14 @@ export class GroupsController {
     @Query() query: PaginationQueryDto,
   ) {
     return this.groups.members(user.userId, id, query);
+  }
+  @Patch(':groupId/members/:userId/permissions') permissions(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('groupId', ParseObjectIdPipe) id: string,
+    @Param('userId', ParseObjectIdPipe) userId: string,
+    @Body() dto: UpdateGroupPermissionsDto,
+  ) {
+    return this.groups.updatePermissions(user.userId, id, userId, dto);
   }
   @Post(':groupId/leave') @HttpCode(204) leave(
     @CurrentUser() user: AuthenticatedUser,

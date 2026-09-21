@@ -1,6 +1,7 @@
+import { personalBudget } from '../../common/utils/personal-budget.util';
 import { INestApplicationContext } from '@nestjs/common';
 import { getModelToken } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
+import { Model } from 'mongoose';
 import { Account } from '../../modules/accounts/schemas/accounts.schema';
 
 export async function seedAccounts(
@@ -11,10 +12,10 @@ export async function seedAccounts(
 
   const [balance, saving] = await Promise.all([
     accountModel.create({
-      userId: new Types.ObjectId(userId),
+      ...personalBudget(userId),
       type: 'balance',
     }),
-    accountModel.create({ userId: new Types.ObjectId(userId), type: 'saving' }),
+    accountModel.create({ ...personalBudget(userId), type: 'saving' }),
   ]);
 
   return {

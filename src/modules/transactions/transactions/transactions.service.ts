@@ -1,6 +1,10 @@
+import {
+  personalBudget,
+  personalResponse,
+} from 'src/common/utils/personal-budget.util';
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
+import { InjectConnection, InjectModel } from '@nestjs/mongoose';
+import { ClientSession, Connection, Model, Types } from 'mongoose';
 import { getPagination } from 'src/common/utils/pagination.util';
 import {
   Account,
@@ -26,6 +30,7 @@ export class TransactionsService {
     @InjectModel(Account.name)
     private readonly accountModel: Model<AccountDocument>,
     private readonly snapshotService: AccountsSnapshotsService,
+    @InjectConnection() private readonly connection: Connection,
   ) {}
 
   async findAll(
@@ -51,19 +56,21 @@ export class TransactionsService {
       model.countDocuments(filter),
     ]);
 
-    return { items, total, page, limit };
+    return { items: items.map(personalResponse), total, page, limit };
   }
 
   async findOne(
     userId: string,
     transactionId: string,
     model: Model<Transaction> = this.transactionModel,
+    session?: ClientSession,
   ) {
     const accountTransaction = await model
       .findOne({
         _id: transactionId,
-        userId: new Types.ObjectId(userId),
+        ...personalBudget(new Types.ObjectId(userId)),
       })
+      .session(session ?? null)
       .lean()
       .exec();
 
@@ -73,7 +80,7 @@ export class TransactionsService {
       );
     }
 
-    return accountTransaction;
+    return personalResponse(accountTransaction);
   }
 
   async findRevenue(
@@ -107,44 +114,81 @@ export class TransactionsService {
     };
   }
 
-  // TODO Обернуть в транзакцию
   async delete(userId: string, transactionId: string) {
-    await this.ensureUserExists(userId);
-    const transaction = await this.transactionModel.findOneAndDelete({
-      _id: transactionId,
-      userId: new Types.ObjectId(userId),
-    });
-
-    if (!transaction) {
-      throw new NotFoundException(`Transaction ${transactionId} not found`);
+    const session = await this.connection.startSession();
+    try {
+      return await session.withTransaction(async () => {
+        const transaction = await this.findOne(
+          userId,
+          transactionId,
+          this.transactionModel,
+          session,
+        );
+        const sourceId =
+          transaction.type === 'save' && 'sourceAccountId' in transaction
+            ? String(transaction.sourceAccountId)
+            : undefined;
+        await this.lockAccounts(
+          userId,
+          [transaction.accountId.toString(), ...(sourceId ? [sourceId] : [])],
+          session,
+        );
+        const deleted = await this.transactionModel.findOneAndDelete(
+          { _id: transactionId, ...personalBudget(userId) },
+          { session },
+        );
+        if (!deleted)
+          throw new NotFoundException(`Transaction ${transactionId} not found`);
+        await this.snapshotService.recalculateSnapshotsFromDate(
+          userId,
+          transaction.accountId.toString(),
+          { date: transaction.transactionDate.toISOString() },
+          {
+            amount:
+              transaction.amount * (transaction.type === 'expense' ? 1 : -1),
+          },
+          session,
+        );
+        if (sourceId)
+          await this.snapshotService.recalculateSnapshotsFromDate(
+            userId,
+            sourceId,
+            { date: transaction.transactionDate.toISOString() },
+            { amount: transaction.amount },
+            session,
+          );
+        return null;
+      });
+    } finally {
+      await session.endSession();
     }
-
-    const diffFactor = ['save', 'income'].includes(transaction.type) ? -1 : 1;
-    const diffAmount = transaction.amount * diffFactor;
-
-    await this.snapshotService.recalculateSnapshotsFromDate(
-      userId,
-      transaction.accountId.toString(),
-      { date: transaction.transactionDate.toISOString() },
-      { amount: diffAmount },
-    );
-    if (transaction.type === 'save' && 'sourceAccountId' in transaction) {
-      await this.snapshotService.recalculateSnapshotsFromDate(
-        userId,
-        (transaction.sourceAccountId as Types.ObjectId).toString(),
-        { date: transaction.transactionDate.toISOString() },
-        { amount: transaction.amount },
-      );
-    }
-
-    return null;
   }
 
-  async deleteAllByAccountId(userId: string, accountId: string) {
-    await this.transactionModel.deleteMany({
-      userId: new Types.ObjectId(userId),
-      accountId: new Types.ObjectId(accountId),
-    });
+  async lockAccounts(
+    userId: string,
+    accountIds: string[],
+    session: ClientSession,
+  ) {
+    for (const id of [...new Set(accountIds)].sort()) {
+      const result = await this.accountModel.updateOne(
+        { _id: id, ...personalBudget(userId) },
+        { $inc: { mutationVersion: 1 } },
+        { session },
+      );
+      if (!result.matchedCount)
+        throw new NotFoundException(`Account ${id} not found.`);
+    }
+  }
+
+  async deleteAllByAccountId(
+    userId: string,
+    accountId: string,
+    session?: ClientSession,
+  ) {
+    await this.transactionModel.deleteMany(
+      { ...personalBudget(userId), accountId: new Types.ObjectId(accountId) },
+      { session },
+    );
   }
 
   buildFilter(
@@ -156,6 +200,8 @@ export class TransactionsService {
   ) {
     const filter: {
       userId: Types.ObjectId;
+      ownerType: 'user';
+      ownerId: Types.ObjectId;
       type?: TransactionType;
       transactionDate?: {
         $gte?: Date;
@@ -164,7 +210,7 @@ export class TransactionsService {
       category?: Types.ObjectId;
       snapshotId?: Types.ObjectId;
       accountId?: Types.ObjectId;
-    } = { userId };
+    } = { ...personalBudget(userId) };
 
     if (query.categoryId) {
       filter.category = new Types.ObjectId(query.categoryId);
@@ -199,24 +245,32 @@ export class TransactionsService {
     return filter;
   }
 
-  async ensureUserExists(userId: string, accountType: AccountType = 'balance') {
-    const foundUser = await this.userModel.exists({ _id: userId });
+  async ensureUserExists(
+    userId: string,
+    accountType: AccountType = 'balance',
+    session?: ClientSession,
+  ) {
+    const foundUser = await this.userModel
+      .exists({ _id: userId })
+      .session(session ?? null);
 
     if (!foundUser) {
       throw new NotFoundException(`User ${userId} not found.`);
     }
 
-    const account = await this.accountModel.exists({
-      userId: foundUser._id,
-      type: accountType,
-    });
+    const account = await this.accountModel
+      .exists({
+        ...personalBudget(foundUser._id),
+        type: accountType,
+      })
+      .session(session ?? null);
 
     if (!account) {
       throw new NotFoundException(`Account for user ${userId} not found.`);
     }
 
     return {
-      userId: foundUser._id,
+      ...personalBudget(foundUser._id),
       accountId: account._id,
     };
   }

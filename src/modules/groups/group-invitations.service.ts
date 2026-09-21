@@ -1,3 +1,4 @@
+import { effectivePermissions } from './group-permissions';
 import {
   BadRequestException,
   ConflictException,
@@ -136,7 +137,14 @@ export class GroupInvitationsService {
       if (!result.modifiedCount) throw this.invalid();
       await this.memberships.updateOne(
         { groupId, userId },
-        { $set: { status: 'active', joinedAt: now }, $unset: { endedAt: 1 } },
+        {
+          $set: {
+            status: 'active',
+            joinedAt: now,
+            permissions: effectivePermissions(false),
+          },
+          $unset: { endedAt: 1 },
+        },
         { upsert: true, session },
       );
       await this.events.create(

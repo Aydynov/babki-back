@@ -1,3 +1,4 @@
+import { type GroupPermissions, permissionFields } from '../group-permissions';
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument, Schema as MongooseSchema, Types } from 'mongoose';
 
@@ -12,6 +13,7 @@ export class GroupMembershipEvent {
   @Prop({
     required: true,
     enum: [
+      'permissions-updated',
       'joined',
       'left',
       'removed',
@@ -20,6 +22,26 @@ export class GroupMembershipEvent {
     ],
   })
   kind: string;
+  @Prop({ type: MongooseSchema.Types.ObjectId }) targetUserId?: Types.ObjectId;
+  @Prop({ type: new MongooseSchema(permissionFields, { _id: false }) })
+  before?: GroupPermissions;
+  @Prop({ type: new MongooseSchema(permissionFields, { _id: false }) })
+  after?: GroupPermissions;
+  @Prop({
+    type: [
+      {
+        _id: false,
+        userId: MongooseSchema.Types.ObjectId,
+        before: new MongooseSchema(permissionFields, { _id: false }),
+        after: new MongooseSchema(permissionFields, { _id: false }),
+      },
+    ],
+  })
+  permissionResets?: {
+    userId: Types.ObjectId;
+    before: GroupPermissions;
+    after: GroupPermissions;
+  }[];
   @Prop({ required: true }) occurredAt: Date;
   @Prop({ type: MongooseSchema.Types.ObjectId })
   previousOwnerId?: Types.ObjectId;

@@ -1,3 +1,4 @@
+import { personalBudget } from 'src/common/utils/personal-budget.util';
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import {
@@ -165,12 +166,13 @@ export class ReportsService {
   ) {
     const match: {
       userId: Types.ObjectId;
+      ownerType: 'user';
+      ownerId: Types.ObjectId;
       transactionDate?: { $gte: Date; $lte: Date };
       $or?: (
-        | { type: { $ne: string } }
-        | { category: { $in: Types.ObjectId[] } }
+        { type: { $ne: string } } | { category: { $in: Types.ObjectId[] } }
       )[];
-    } = { userId: new Types.ObjectId(userId) };
+    } = { ...personalBudget(new Types.ObjectId(userId)) };
 
     if (dateRange) {
       match.transactionDate = {
