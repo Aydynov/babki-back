@@ -39,3 +39,4 @@ export class Expense extends Transaction {
 }
 
 export const ExpenseSchema = SchemaFactory.createForClass(Expense);
+ExpenseSchema.index({ category: 1 });

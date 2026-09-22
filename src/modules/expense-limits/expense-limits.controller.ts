@@ -3,6 +3,8 @@ import {
   Controller,
   Delete,
   Get,
+  HttpCode,
+  HttpStatus,
   Param,
   Patch,
   Post,
@@ -61,6 +63,7 @@ export class ExpenseLimitsController {
   }
 
   @Delete(':limitId')
+  @HttpCode(HttpStatus.NO_CONTENT)
   delete(
     @CurrentUser() currentUser: AuthenticatedUser,
     @Param('limitId', ParseObjectIdPipe) limitId: string,

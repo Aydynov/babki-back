@@ -10,6 +10,8 @@ const CATEGORIES = [
   { name: 'Utilities', color: '#FFA07A' },
   { name: 'Health', color: '#98D8C8' },
   { name: 'Shopping', color: '#DDA0DD' },
+  { name: 'Deletion test: unused', color: '#A0A0A0' },
+  { name: 'Deletion test: archived', color: '#707070' },
 ] as const;
 
 export async function seedCategories(
@@ -26,6 +28,10 @@ export async function seedCategories(
     });
     result[cat.name] = String(created._id);
   }
+
+  await categoriesService.update(userId, result['Deletion test: archived'], {
+    isArchived: true,
+  });
 
   return result;
 }

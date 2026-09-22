@@ -212,6 +212,10 @@ describe('configuration', () => {
     expect(result.security.totpEncryption.keys['enc-v1']).toHaveLength(32);
     expect(result.security.recoveryHmac.keys['recovery-v1']).toHaveLength(32);
     expect(result.security.throttleHmacKey).toHaveLength(32);
+    expect(result.userDeletion).toEqual({
+      enabled: false,
+      leaseSeconds: 300,
+    });
   });
 
   it('reads Mongo topology and runtime policies from the environment', () => {

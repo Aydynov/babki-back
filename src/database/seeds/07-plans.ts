@@ -78,4 +78,5 @@ export async function seedPlans(
     closingDate: getSeedDate(-4, 15, anchorDate),
     amount: 25000,
   });
+  await plansService.archive(userId, String(dinner._id));
 }

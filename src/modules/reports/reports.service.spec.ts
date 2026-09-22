@@ -232,6 +232,7 @@ describe('ReportsService', () => {
         {
           // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
           $match: expect.objectContaining({
+            deletedAt: null,
             $or: [
               { type: { $ne: 'expense' } },
               { category: { $in: [new Types.ObjectId(foodCategoryId)] } },

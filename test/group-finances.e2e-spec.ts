@@ -121,10 +121,24 @@ describe('Group finances HTTP', () => {
     );
     await call('delete', `/groups/${group}/expenses/${expense}`).expect(204);
     await call('delete', `/groups/${group}/expenses/${expense}`).expect(404);
+    expect(
+      (await call('get', `/groups/${group}/expenses`).expect(200)).body,
+    ).toMatchObject({ total: 0, items: [] });
+    const reportAfter = await call(
+      'get',
+      `/groups/${group}/reports/months?fromDate=2024-02-01&toDate=2024-02-29`,
+    ).expect(200);
+    expect(reportAfter.body).toEqual(
+      expect.arrayContaining([expect.objectContaining({ expenses: 0 })]),
+    );
     const a = await call('get', `/groups/${group}/accounts/${account}`).expect(
       200,
     );
     expect((a.body as { amount: number }).amount).toBe(1000);
     await call('delete', `/groups/${group}/accounts/${account}`).expect(409);
+    await call(
+      'delete',
+      `/groups/${group}/expense-categories/${category}`,
+    ).expect(409);
   });
 });

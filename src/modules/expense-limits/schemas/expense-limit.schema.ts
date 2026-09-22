@@ -42,3 +42,4 @@ ExpenseLimitSchema.index({
   startDate: 1,
   endDate: 1,
 });
+ExpenseLimitSchema.index({ category: 1 });

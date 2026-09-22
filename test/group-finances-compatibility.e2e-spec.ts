@@ -84,7 +84,7 @@ describe('Personal and group finance compatibility', () => {
       ((await api('get', '/savings')).body as { amount: number }).amount,
     ).toBe(50);
     const saved = save.body as { _id: string };
-    await api('delete', `/transactions/${saved._id}`).expect(200);
+    await api('delete', `/transactions/${saved._id}`).expect(204);
     expect(
       ((await api('get', '/balances')).body as { amount: number }).amount,
     ).toBe(850);

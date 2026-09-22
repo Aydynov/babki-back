@@ -1,4 +1,8 @@
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  NotFoundException,
+} from '@nestjs/common';
 import { getConnectionToken, getModelToken } from '@nestjs/mongoose';
 import { Test } from '@nestjs/testing';
 import { Types } from 'mongoose';
@@ -33,7 +37,7 @@ describe('PlansService', () => {
     countDocuments: jest.fn(),
   };
   const userModel = { exists: jest.fn() };
-  const expenseCategoryModel = { exists: jest.fn() };
+  const expenseCategoryModel = { findOneAndUpdate: jest.fn() };
   const expensesService = { create: jest.fn() };
 
   let service: PlansService;
@@ -56,6 +60,14 @@ describe('PlansService', () => {
     }).compile();
 
     service = moduleRef.get(PlansService);
+    expenseCategoryModel.findOneAndUpdate.mockReturnValue({
+      lean: () => ({
+        exec: async () => ({
+          _id: new Types.ObjectId(categoryId),
+          isArchived: false,
+        }),
+      }),
+    });
   });
 
   // ─── create ───────────────────────────────────────────────────────────────
@@ -70,23 +82,21 @@ describe('PlansService', () => {
 
     it('creates a plan after validating user and category', async () => {
       userModel.exists.mockResolvedValue({ _id: new Types.ObjectId(userId) });
-      expenseCategoryModel.exists.mockResolvedValue({
-        _id: new Types.ObjectId(categoryId),
-      });
       const mockPlan = {
         _id: new Types.ObjectId(planId),
         ...dto,
         status: 'active',
       };
-      planModel.create.mockResolvedValue({ toObject: () => mockPlan });
+      planModel.create.mockResolvedValue([{ toObject: () => mockPlan }]);
 
       const result = await service.create(userId, dto);
 
       expect(userModel.exists).toHaveBeenCalledWith({ _id: userId });
-      expect(expenseCategoryModel.exists).toHaveBeenCalledWith({
-        _id: categoryId,
-        userId: new Types.ObjectId(userId),
-      });
+      expect(expenseCategoryModel.findOneAndUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({ _id: new Types.ObjectId(categoryId) }),
+        { $inc: { mutationVersion: 1 } },
+        expect.objectContaining({ session: mockSession }),
+      );
       expect(result).toMatchObject({
         description: 'Buy a laptop',
         status: 'active',
@@ -104,7 +114,9 @@ describe('PlansService', () => {
 
     it('throws NotFoundException when category does not exist', async () => {
       userModel.exists.mockResolvedValue({ _id: new Types.ObjectId(userId) });
-      expenseCategoryModel.exists.mockResolvedValue(null);
+      expenseCategoryModel.findOneAndUpdate.mockReturnValue({
+        lean: () => ({ exec: async () => null }),
+      });
 
       await expect(service.create(userId, dto)).rejects.toBeInstanceOf(
         NotFoundException,
@@ -137,6 +149,7 @@ describe('PlansService', () => {
       expect(planModel.find).toHaveBeenCalledWith({
         userId: new Types.ObjectId(userId),
         status: 'active',
+        archivedAt: null,
       });
       expect(result).toEqual({
         items: [mockPlan],
@@ -162,6 +175,7 @@ describe('PlansService', () => {
       expect(planModel.findOne).toHaveBeenCalledWith({
         _id: planId,
         userId: new Types.ObjectId(userId),
+        archivedAt: null,
       });
       expect(result).toEqual(mockPlan);
     });
@@ -236,6 +250,14 @@ describe('PlansService', () => {
   describe('remove', () => {
     it('deletes an active plan', async () => {
       userModel.exists.mockResolvedValue({ _id: new Types.ObjectId(userId) });
+      planModel.findOne.mockReturnValue({
+        lean: () => ({
+          exec: async () => ({
+            _id: new Types.ObjectId(planId),
+            status: 'active',
+          }),
+        }),
+      });
       const exec = jest
         .fn()
         .mockResolvedValue({ _id: new Types.ObjectId(planId) });
@@ -244,21 +266,28 @@ describe('PlansService', () => {
       await expect(service.remove(userId, planId)).resolves.toBeUndefined();
     });
 
-    it('deletes a closed plan', async () => {
+    it('restricts deletion of a closed plan', async () => {
       userModel.exists.mockResolvedValue({ _id: new Types.ObjectId(userId) });
-      const exec = jest.fn().mockResolvedValue({
-        _id: new Types.ObjectId(planId),
-        status: 'closed',
+      planModel.findOne.mockReturnValue({
+        lean: () => ({
+          exec: async () => ({
+            _id: new Types.ObjectId(planId),
+            status: 'closed',
+          }),
+        }),
       });
-      planModel.findOneAndDelete.mockReturnValue({ exec });
 
-      await expect(service.remove(userId, planId)).resolves.toBeUndefined();
+      await expect(service.remove(userId, planId)).rejects.toBeInstanceOf(
+        ConflictException,
+      );
+      expect(planModel.findOneAndDelete).not.toHaveBeenCalled();
     });
 
     it('throws NotFoundException when plan does not exist', async () => {
       userModel.exists.mockResolvedValue({ _id: new Types.ObjectId(userId) });
       const exec = jest.fn().mockResolvedValue(null);
-      planModel.findOneAndDelete.mockReturnValue({ exec });
+      const lean = jest.fn().mockReturnValue({ exec });
+      planModel.findOne.mockReturnValue({ lean });
 
       await expect(service.remove(userId, planId)).rejects.toBeInstanceOf(
         NotFoundException,
@@ -316,9 +345,15 @@ describe('PlansService', () => {
           description: activePlan.description,
         },
         expect.anything(),
+        { type: 'plan', id: new Types.ObjectId(planId) },
       );
       expect(planModel.findOneAndUpdate).toHaveBeenCalledWith(
-        { _id: planId, userId: new Types.ObjectId(userId), status: 'active' },
+        {
+          _id: planId,
+          userId: new Types.ObjectId(userId),
+          status: 'active',
+          archivedAt: null,
+        },
         expect.objectContaining({
           status: 'closed',
           expenseId: createdExpense._id,
@@ -354,6 +389,7 @@ describe('PlansService', () => {
           description: 'Refurbished laptop',
         },
         expect.anything(),
+        { type: 'plan', id: new Types.ObjectId(planId) },
       );
     });
 

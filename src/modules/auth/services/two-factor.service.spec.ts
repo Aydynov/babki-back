@@ -19,6 +19,7 @@ describe('TwoFactorService', () => {
     findOne: jest.fn(),
     findOneAndUpdate: jest.fn(),
     deleteOne: jest.fn(),
+    updateOne: jest.fn(),
   };
   const usersService = {
     findByIdWithPassword: jest.fn(),
@@ -131,6 +132,56 @@ describe('TwoFactorService', () => {
       }),
       { upsert: true, returnDocument: 'after' },
     );
+  });
+
+  it('accepts password-only deletion step-up when 2FA is disabled', async () => {
+    const passwordHash = await bcrypt.hash('password123', 4);
+    usersService.findByIdWithPassword.mockResolvedValue({ passwordHash });
+    model.findOne.mockReturnValue(query(null));
+
+    await expect(
+      service.assertDeletionStepUp(userId, 'password123', undefined, now),
+    ).resolves.toBeUndefined();
+  });
+
+  it('requires and consumes a fresh TOTP step for deletion when 2FA is enabled', async () => {
+    const passwordHash = await bcrypt.hash('password123', 4);
+    usersService.findByIdWithPassword.mockResolvedValue({ passwordHash });
+    model.findOne.mockReturnValue(
+      query({
+        _id: 'credential-id',
+        status: 'enabled',
+        secretEnvelope: { keyId: 'v1' },
+        lastAcceptedTimeStep: 120,
+      }),
+    );
+    encryptionService.decrypt.mockReturnValue({ plaintext: 'SECRET' });
+    totpService.verify.mockResolvedValue(121);
+    model.updateOne.mockResolvedValue({ matchedCount: 1 });
+
+    await expect(
+      service.assertDeletionStepUp(userId, 'password123', '123456', now),
+    ).resolves.toBeUndefined();
+    expect(model.updateOne).toHaveBeenCalledWith(
+      expect.objectContaining({ _id: 'credential-id' }),
+      { $set: { lastAcceptedTimeStep: 121 } },
+    );
+  });
+
+  it('rejects deletion step-up without a second factor when 2FA is enabled', async () => {
+    const passwordHash = await bcrypt.hash('password123', 4);
+    usersService.findByIdWithPassword.mockResolvedValue({ passwordHash });
+    model.findOne.mockReturnValue(
+      query({
+        _id: 'credential-id',
+        status: 'enabled',
+        secretEnvelope: { keyId: 'v1' },
+      }),
+    );
+
+    await expect(
+      service.assertDeletionStepUp(userId, 'password123', undefined, now),
+    ).rejects.toBeInstanceOf(UnauthorizedException);
   });
 
   it('returns conflict for an enabled credential while enrollment is gated off', async () => {

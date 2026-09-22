@@ -10,7 +10,9 @@ import { ListTransactionsQueryDto } from '../dto/list-transactions-query.dto';
 import { TransactionsService } from '../transactions/transactions.service';
 import { CreateIncomeDto } from './dto/create-income.dto';
 import { Income, IncomeDocument } from '../schemas/income.schema';
+import { TransactionOrigin } from '../schemas/transaction.schema';
 import { UpdateIncomeDto } from './dto/update-income.dto';
+import { activeTransactionFilter } from '../transactions/active-transaction.filter';
 
 @Injectable()
 export class IncomesService {
@@ -26,12 +28,14 @@ export class IncomesService {
     userId: string,
     createIncomeDto: CreateIncomeDto,
     session?: ClientSession,
+    origin?: TransactionOrigin,
   ) {
-    if (session) return this._doCreate(userId, createIncomeDto, session);
+    if (session)
+      return this._doCreate(userId, createIncomeDto, session, origin);
     const s = await this.connection.startSession();
     try {
       return await s.withTransaction(() =>
-        this._doCreate(userId, createIncomeDto, s),
+        this._doCreate(userId, createIncomeDto, s, origin),
       );
     } finally {
       await s.endSession();
@@ -42,6 +46,7 @@ export class IncomesService {
     userId: string,
     createIncomeDto: CreateIncomeDto,
     session: ClientSession,
+    origin?: TransactionOrigin,
   ) {
     const foundIds = await this.transactionsService.ensureUserExists(
       userId,
@@ -74,6 +79,7 @@ export class IncomesService {
           accountId: foundIds.accountId,
           snapshotId: foundSnapshot._id,
           ...createIncomeDto,
+          origin,
         },
       ],
       { session },
@@ -153,6 +159,7 @@ export class IncomesService {
             {
               _id: transactionId,
               ...personalBudget(new Types.ObjectId(userId)),
+              ...activeTransactionFilter,
             },
             { $set: updatePayload },
             {

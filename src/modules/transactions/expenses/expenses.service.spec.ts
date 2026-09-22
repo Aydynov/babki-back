@@ -23,11 +23,15 @@ describe('ExpensesService', () => {
   };
 
   const mockConnection = { startSession: jest.fn() };
-  const expenseModel = { create: jest.fn() };
-  const expenseCategoryModel = { exists: jest.fn() };
+  const expenseModel = { create: jest.fn(), countDocuments: jest.fn() };
+  const expenseCategoryModel = {
+    exists: jest.fn(),
+    findOneAndUpdate: jest.fn(),
+  };
   const transactionsService = {
     ensureUserExists: jest.fn(),
     lockAccounts: jest.fn(),
+    buildFilter: jest.fn(),
   };
   const snapshotsService = {
     findOrCreateByAccountId: jest.fn(),
@@ -54,6 +58,19 @@ describe('ExpensesService', () => {
     }).compile();
 
     service = moduleRef.get(ExpensesService);
+    expenseCategoryModel.findOneAndUpdate.mockReturnValue({
+      lean: () => ({
+        exec: async () => ({
+          _id: new Types.ObjectId(categoryId),
+          isArchived: false,
+        }),
+      }),
+    });
+    transactionsService.buildFilter.mockReturnValue({
+      ownerType: 'user',
+      ownerId: new Types.ObjectId(userId),
+      deletedAt: null,
+    });
   });
 
   it('uses a provided session directly without creating a new one', async () => {
@@ -87,6 +104,47 @@ describe('ExpensesService', () => {
     expect(expenseModel.create).toHaveBeenCalledWith(expect.any(Array), {
       session: externalSession,
     });
+  });
+
+  it('persists an internal transaction origin', async () => {
+    const externalSession = {} as ClientSession;
+    const origin = {
+      type: 'plan' as const,
+      id: new Types.ObjectId('507f1f77bcf86cd799439015'),
+    };
+
+    transactionsService.ensureUserExists.mockResolvedValue({
+      userId: new Types.ObjectId(userId),
+      accountId: new Types.ObjectId(accountId),
+    });
+    expenseCategoryModel.exists.mockReturnValue({
+      session: jest
+        .fn()
+        .mockResolvedValue({ _id: new Types.ObjectId(categoryId) }),
+    });
+    snapshotsService.findOrCreateByAccountId.mockResolvedValue({
+      _id: new Types.ObjectId(snapshotId),
+      accountId: new Types.ObjectId(accountId),
+    });
+    expenseModel.create.mockResolvedValue([
+      {
+        populate: jest.fn().mockResolvedValue({ _id: new Types.ObjectId() }),
+      },
+    ]);
+
+    await (
+      service.create as unknown as (
+        userId: string,
+        dto: CreateExpenseDto,
+        session: ClientSession,
+        origin: typeof origin,
+      ) => Promise<unknown>
+    )(userId, createExpenseDto, externalSession, origin);
+
+    expect(expenseModel.create).toHaveBeenCalledWith(
+      [expect.objectContaining({ origin })],
+      { session: externalSession },
+    );
   });
 
   it('creates its own session when none is provided', async () => {
@@ -170,11 +228,9 @@ describe('ExpensesService', () => {
 
       // findOne chain (used internally by update)
       const findOneLean = jest.fn().mockResolvedValue(existingExpense);
-      const findOnePopulate = jest
-        .fn()
-        .mockReturnValue({
-          session: jest.fn().mockReturnValue({ lean: findOneLean }),
-        });
+      const findOnePopulate = jest.fn().mockReturnValue({
+        session: jest.fn().mockReturnValue({ lean: findOneLean }),
+      });
       expenseModel.findOne = jest
         .fn()
         .mockReturnValue({ populate: findOnePopulate });
@@ -202,10 +258,25 @@ describe('ExpensesService', () => {
         mockInternalSession,
       );
       expect(expenseModel.findOneAndUpdate).toHaveBeenCalledWith(
-        expect.any(Object),
+        expect.objectContaining({ deletedAt: null }),
         expect.any(Object),
         expect.objectContaining({ session: mockInternalSession }),
       );
     });
+  });
+
+  it('uses the active filter for normal counts but not dependency history', async () => {
+    expenseModel.countDocuments.mockResolvedValue(1);
+
+    await service.countByFilters(userId, { categoryId });
+    await service.countHistoryByFilters(userId, { categoryId });
+
+    expect(expenseModel.countDocuments).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ deletedAt: null }),
+    );
+    expect(expenseModel.countDocuments.mock.calls[1][0]).not.toHaveProperty(
+      'deletedAt',
+    );
   });
 });

@@ -3,6 +3,8 @@ import {
   Controller,
   Delete,
   Get,
+  HttpCode,
+  HttpStatus,
   Param,
   Patch,
   Post,
@@ -61,6 +63,7 @@ export class ExpenseCategoriesController {
   }
 
   @Delete(':categoryId')
+  @HttpCode(HttpStatus.NO_CONTENT)
   remove(
     @CurrentUser() currentUser: AuthenticatedUser,
     @Param('categoryId', ParseObjectIdPipe) categoryId: string,

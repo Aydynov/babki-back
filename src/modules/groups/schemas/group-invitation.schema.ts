@@ -1,6 +1,13 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument, Schema as MongooseSchema, Types } from 'mongoose';
 
+export const invitationRevocationReasons = [
+  'manual',
+  'group_deleted',
+] as const;
+export type InvitationRevocationReason =
+  (typeof invitationRevocationReasons)[number];
+
 @Schema({ timestamps: true })
 export class GroupInvitation {
   @Prop({ type: MongooseSchema.Types.ObjectId, required: true })
@@ -19,6 +26,12 @@ export class GroupInvitation {
   @Prop() acceptedAt?: Date;
   @Prop({ type: MongooseSchema.Types.ObjectId }) revokedBy?: Types.ObjectId;
   @Prop() revokedAt?: Date;
+  @Prop({
+    type: String,
+    enum: invitationRevocationReasons,
+    default: null,
+  })
+  revocationReason: InvitationRevocationReason | null;
   createdAt: Date;
 }
 export type GroupInvitationDocument = HydratedDocument<GroupInvitation>;
@@ -26,3 +39,4 @@ export const GroupInvitationSchema =
   SchemaFactory.createForClass(GroupInvitation);
 GroupInvitationSchema.index({ tokenDigest: 1 }, { unique: true });
 GroupInvitationSchema.index({ groupId: 1, createdAt: 1, _id: 1 });
+GroupInvitationSchema.index({ groupId: 1, status: 1 });

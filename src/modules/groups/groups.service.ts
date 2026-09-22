@@ -20,6 +20,7 @@ import { GroupsTransactionService } from './groups-transaction.service';
 import { Group, GroupDocument } from './schemas/group.schema';
 import { GroupMembership } from './schemas/group-membership.schema';
 import { GroupMembershipEvent } from './schemas/group-membership-event.schema';
+import { GroupInvitation } from './schemas/group-invitation.schema';
 
 @Injectable()
 export class GroupsService {
@@ -29,6 +30,8 @@ export class GroupsService {
     private readonly memberships: Model<GroupMembership>,
     @InjectModel(GroupMembershipEvent.name)
     private readonly events: Model<GroupMembershipEvent>,
+    @InjectModel(GroupInvitation.name)
+    private readonly invitations: Model<GroupInvitation>,
     @InjectModel(User.name) private readonly users: Model<User>,
     private readonly access: GroupsAccessService,
     private readonly transactions: GroupsTransactionService,
@@ -111,6 +114,29 @@ export class GroupsService {
       const now = new Date();
       group.deletedAt = now;
       await group.save({ session });
+      await this.memberships.updateMany(
+        { groupId, status: 'active' },
+        {
+          $set: {
+            status: 'removed',
+            endedAt: now,
+            endReason: 'group_deleted',
+          },
+        },
+        { session },
+      );
+      await this.invitations.updateMany(
+        { groupId, status: 'pending' },
+        {
+          $set: {
+            status: 'revoked',
+            revokedAt: now,
+            revokedBy: new Types.ObjectId(userId),
+            revocationReason: 'group_deleted',
+          },
+        },
+        { session },
+      );
       await this.event(groupId, userId, userId, 'group-deleted', session, now);
     });
   }
@@ -190,7 +216,13 @@ export class GroupsService {
       const before = await this.resetPermissions(groupId, userId, session);
       await this.memberships.updateOne(
         { groupId, userId, status: 'active' },
-        { $set: { status: 'left', endedAt: now } },
+        {
+          $set: {
+            status: 'left',
+            endedAt: now,
+            endReason: 'member_left',
+          },
+        },
         { session },
       );
       await this.event(groupId, userId, userId, 'left', session, now, {
@@ -207,7 +239,13 @@ export class GroupsService {
       const before = await this.resetPermissions(groupId, userId, session);
       const result = await this.memberships.updateOne(
         { groupId, userId, status: 'active' },
-        { $set: { status: 'removed', endedAt: now } },
+        {
+          $set: {
+            status: 'removed',
+            endedAt: now,
+            endReason: 'member_removed',
+          },
+        },
         { session },
       );
       if (!result.matchedCount) throw new NotFoundException('Member not found');

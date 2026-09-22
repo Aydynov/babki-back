@@ -19,6 +19,7 @@ import {
   TransactionDocument,
   TransactionType,
 } from '../schemas/transaction.schema';
+import { activeTransactionFilter } from './active-transaction.filter';
 
 @Injectable()
 export class TransactionsService {
@@ -69,6 +70,7 @@ export class TransactionsService {
       .findOne({
         _id: transactionId,
         ...personalBudget(new Types.ObjectId(userId)),
+        ...activeTransactionFilter,
       })
       .session(session ?? null)
       .lean()
@@ -133,9 +135,19 @@ export class TransactionsService {
           [transaction.accountId.toString(), ...(sourceId ? [sourceId] : [])],
           session,
         );
-        const deleted = await this.transactionModel.findOneAndDelete(
-          { _id: transactionId, ...personalBudget(userId) },
-          { session },
+        const deleted = await this.transactionModel.findOneAndUpdate(
+          {
+            _id: transactionId,
+            ...personalBudget(userId),
+            ...activeTransactionFilter,
+          },
+          {
+            $set: {
+              deletedAt: new Date(),
+              deletedBy: new Types.ObjectId(userId),
+            },
+          },
+          { returnDocument: 'after', session },
         );
         if (!deleted)
           throw new NotFoundException(`Transaction ${transactionId} not found`);
@@ -171,7 +183,7 @@ export class TransactionsService {
   ) {
     for (const id of [...new Set(accountIds)].sort()) {
       const result = await this.accountModel.updateOne(
-        { _id: id, ...personalBudget(userId) },
+        { _id: id, ...personalBudget(userId), archivedAt: null },
         { $inc: { mutationVersion: 1 } },
         { session },
       );
@@ -180,15 +192,22 @@ export class TransactionsService {
     }
   }
 
-  async deleteAllByAccountId(
+  async hasHistoryByAccountId(
     userId: string,
     accountId: string,
-    session?: ClientSession,
+    session: ClientSession,
   ) {
-    await this.transactionModel.deleteMany(
-      { ...personalBudget(userId), accountId: new Types.ObjectId(accountId) },
-      { session },
-    );
+    const accountObjectId = new Types.ObjectId(accountId);
+    const found = await this.transactionModel
+      .exists({
+        ...personalBudget(userId),
+        $or: [
+          { accountId: accountObjectId },
+          { sourceAccountId: accountObjectId },
+        ],
+      })
+      .session(session);
+    return Boolean(found);
   }
 
   buildFilter(
@@ -210,7 +229,8 @@ export class TransactionsService {
       category?: Types.ObjectId;
       snapshotId?: Types.ObjectId;
       accountId?: Types.ObjectId;
-    } = { ...personalBudget(userId) };
+      deletedAt: null;
+    } = { ...personalBudget(userId), ...activeTransactionFilter };
 
     if (query.categoryId) {
       filter.category = new Types.ObjectId(query.categoryId);

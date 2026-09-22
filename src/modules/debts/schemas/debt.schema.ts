@@ -1,5 +1,5 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { HydratedDocument, Types } from 'mongoose';
+import { HydratedDocument, Schema as MongooseSchema, Types } from 'mongoose';
 import { User } from '../../users/schemas/user.schema';
 
 export type DebtDocument = HydratedDocument<Debt>;
@@ -8,7 +8,7 @@ export type DebtStatus = (typeof debtStatuses)[number];
 
 @Schema({ timestamps: true })
 export class Debt {
-  @Prop({ required: true, type: Types.ObjectId, ref: User.name })
+  @Prop({ required: true, type: MongooseSchema.Types.ObjectId, ref: User.name })
   userId: Types.ObjectId;
 
   @Prop({ required: true, trim: true })
@@ -28,8 +28,12 @@ export class Debt {
 
   @Prop({ required: true, type: String, enum: debtStatuses, default: 'active' })
   status: DebtStatus;
+
+  @Prop({ type: Date, default: null })
+  archivedAt: Date | null;
 }
 
 export const DebtSchema = SchemaFactory.createForClass(Debt);
 
 DebtSchema.index({ userId: 1, status: 1 });
+DebtSchema.index({ userId: 1, archivedAt: 1 });

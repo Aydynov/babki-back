@@ -11,6 +11,8 @@ describe('UsersService authentication state', () => {
   const userModel = {
     findById: jest.fn(() => ({ select, lean })),
     findByIdAndUpdate: jest.fn(() => ({ select })),
+    findOne: jest.fn(() => ({ select, lean })),
+    findOneAndUpdate: jest.fn(() => ({ select, lean })),
   };
   let service: UsersService;
 
@@ -41,6 +43,10 @@ describe('UsersService authentication state', () => {
       authVersion: 3,
     });
     expect(select).toHaveBeenCalledWith('+authVersion email');
+    expect(userModel.findOne).toHaveBeenCalledWith({
+      _id: userId,
+      status: 'active',
+    });
   });
 
   it('selects password and authentication version for step-up checks', async () => {
@@ -70,15 +76,15 @@ describe('UsersService authentication state', () => {
       email: 'ada@example.com',
       authVersion: 2,
     });
-    expect(userModel.findByIdAndUpdate).toHaveBeenCalledWith(
-      userId,
+    expect(userModel.findOneAndUpdate).toHaveBeenCalledWith(
+      { _id: userId, status: 'active' },
       { $inc: { authVersion: 1 } },
       { returnDocument: 'after', session },
     );
   });
 
   it('never returns hidden authentication fields in a profile', async () => {
-    userModel.findById.mockReturnValueOnce({
+    userModel.findOne.mockReturnValueOnce({
       lean: () => ({
         exec: () =>
           Promise.resolve({

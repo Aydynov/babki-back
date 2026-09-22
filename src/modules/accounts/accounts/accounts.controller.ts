@@ -1,4 +1,13 @@
-import { Controller, Get, Param, Delete, Query } from '@nestjs/common';
+import {
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  Post,
+  Query,
+} from '@nestjs/common';
 import { CurrentUser } from 'src/modules/auth/decorators/current-user.decorator';
 import type { AuthenticatedUser } from 'src/modules/auth/interfaces/authenticated-user.interface';
 import { ParseObjectIdPipe } from 'src/common/pipes/parse-object-id.pipe';
@@ -18,10 +27,20 @@ export class AccountsController {
   }
 
   @Delete(':accountId')
+  @HttpCode(HttpStatus.NO_CONTENT)
   delete(
     @CurrentUser() currentUser: AuthenticatedUser,
     @Param('accountId', ParseObjectIdPipe) accountId: string,
   ) {
     return this.accountsService.deleteEntity(currentUser.userId, accountId);
+  }
+
+  @Post(':accountId/archive')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  archive(
+    @CurrentUser() currentUser: AuthenticatedUser,
+    @Param('accountId', ParseObjectIdPipe) accountId: string,
+  ) {
+    return this.accountsService.archive(currentUser.userId, accountId);
   }
 }

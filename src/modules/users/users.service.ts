@@ -42,7 +42,10 @@ export class UsersService {
   }
 
   async findProfile(userId: string) {
-    const user = await this.userModel.findById(userId).lean().exec();
+    const user = await this.userModel
+      .findOne({ _id: userId, status: 'active' })
+      .lean()
+      .exec();
 
     if (!user) {
       throw new NotFoundException(`User ${userId} not found.`);
@@ -53,7 +56,7 @@ export class UsersService {
 
   async findByEmailWithPassword(email: string) {
     return this.userModel
-      .findOne({ email: email.toLowerCase() })
+      .findOne({ email: email.toLowerCase(), status: 'active' })
       .select('+passwordHash')
       .lean()
       .exec();
@@ -61,7 +64,7 @@ export class UsersService {
 
   async findByIdWithPassword(userId: string) {
     return this.userModel
-      .findById(userId)
+      .findOne({ _id: userId, status: 'active' })
       .select('+passwordHash +authVersion')
       .lean()
       .exec();
@@ -71,7 +74,7 @@ export class UsersService {
     userId: string,
   ): Promise<UserAuthenticationState> {
     const user = await this.userModel
-      .findById(userId)
+      .findOne({ _id: userId, status: 'active' })
       .select('+authVersion email')
       .lean()
       .exec();
@@ -92,8 +95,8 @@ export class UsersService {
     session: ClientSession,
   ): Promise<UserAuthenticationState> {
     const user = await this.userModel
-      .findByIdAndUpdate(
-        userId,
+      .findOneAndUpdate(
+        { _id: userId, status: 'active' },
         { $inc: { authVersion: 1 } },
         { returnDocument: 'after', session },
       )
@@ -115,8 +118,8 @@ export class UsersService {
   async update(userId: string, updateUserDto: UpdateUserDto) {
     try {
       const user = await this.userModel
-        .findByIdAndUpdate(
-          userId,
+        .findOneAndUpdate(
+          { _id: userId, status: 'active' },
           {
             ...updateUserDto,
             ...(updateUserDto.email
@@ -139,7 +142,7 @@ export class UsersService {
   }
 
   async ensureIdExists(userId: string) {
-    const user = await this.userModel.exists({ _id: userId });
+    const user = await this.userModel.exists({ _id: userId, status: 'active' });
 
     if (!user) {
       throw new NotFoundException(`User ${userId} not found.`);

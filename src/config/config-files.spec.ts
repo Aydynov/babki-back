@@ -36,6 +36,8 @@ describe('runtime configuration files', () => {
     'TOTP_ISSUER',
     'TRUST_PROXY',
     'TZ',
+    'USER_DELETION_ENABLED',
+    'USER_DELETION_LEASE_SECONDS',
   ];
   const mongoTopologyKeys = [
     'MONGO_AUTH_ENABLED',
@@ -105,25 +107,27 @@ describe('runtime configuration files', () => {
     },
   );
 
-  it('renders the API port, healthcheck, and secrets mount from one .env', () => {
+  it('renders the API port, healthcheck, and secrets mount from Docker env files', () => {
     const tempDir = mkdtempSync(join(tmpdir(), 'babki-compose-config-'));
     const secretsPath = 'config/secrets/runtime.json';
+    const dockerEnvironment = readFileSync(
+      resolve('.env.docker.example'),
+      'utf8',
+    )
+      .replace('PORT=5001', 'PORT=5123')
+      .replace('API_PREFIX=api/v1', 'API_PREFIX=custom/v2')
+      .replace(
+        'SECRETS_FILE_PATH=config/secrets/docker-compose.local.json',
+        `SECRETS_FILE_PATH=${secretsPath}`,
+      );
 
     try {
       writeFileSync(
         join(tempDir, 'docker-compose.yml'),
         readFileSync(resolve('docker-compose.yml'), 'utf8'),
       );
-      writeFileSync(
-        join(tempDir, '.env'),
-        readFileSync(resolve('.env.docker.example'), 'utf8')
-          .replace('PORT=5001', 'PORT=5123')
-          .replace('API_PREFIX=api/v1', 'API_PREFIX=custom/v2')
-          .replace(
-            'SECRETS_FILE_PATH=config/secrets/docker-compose.local.json',
-            `SECRETS_FILE_PATH=${secretsPath}`,
-          ),
-      );
+      writeFileSync(join(tempDir, '.env'), dockerEnvironment);
+      writeFileSync(join(tempDir, '.env.docker'), dockerEnvironment);
       mkdirSync(join(tempDir, 'config/secrets'), { recursive: true });
       writeFileSync(join(tempDir, secretsPath), '{}\n');
 

@@ -1,4 +1,12 @@
-import { Body, Controller, Get, Post, Req } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Post,
+  Req,
+} from '@nestjs/common';
 import type { Request } from 'express';
 import { AuthService } from './auth.service';
 import { CurrentUser } from './decorators/current-user.decorator';
@@ -13,12 +21,15 @@ import { TwoFactorSetupDto } from './dto/two-factor-setup.dto';
 import type { AuthenticatedUser } from './interfaces/authenticated-user.interface';
 import type { SecurityRequestContext } from './services/security-audit.service';
 import { TwoFactorService } from './services/two-factor.service';
+import { DeleteAccountDto } from './dto/delete-account.dto';
+import { UserDeletionService } from '../users/user-deletion.service';
 
 @Controller('auth')
 export class AuthController {
   constructor(
     private readonly authService: AuthService,
     private readonly twoFactorService: TwoFactorService,
+    private readonly userDeletionService: UserDeletionService,
   ) {}
 
   @Public()
@@ -50,6 +61,20 @@ export class AuthController {
   @Get('two-factor')
   twoFactorStatus(@CurrentUser() currentUser: AuthenticatedUser) {
     return this.twoFactorService.getStatus(currentUser.userId);
+  }
+
+  @Post('account-deletion')
+  @HttpCode(HttpStatus.ACCEPTED)
+  async requestAccountDeletion(
+    @CurrentUser() currentUser: AuthenticatedUser,
+    @Body() dto: DeleteAccountDto,
+  ) {
+    await this.twoFactorService.assertDeletionStepUp(
+      currentUser.userId,
+      dto.password,
+      dto.secondFactorCode,
+    );
+    await this.userDeletionService.request(currentUser.userId);
   }
 
   @Post('two-factor/setup')

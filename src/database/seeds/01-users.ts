@@ -30,6 +30,12 @@ export async function seedUsers(app: INestApplicationContext) {
       lastName: 'Sidorova',
       email: 'elena@test.com',
     },
+    {
+      key: 'deletionCandidate',
+      firstName: 'Delete',
+      lastName: 'Candidate',
+      email: 'delete-me@test.com',
+    },
   ] as const;
   const users = {} as Record<(typeof definitions)[number]['key'], string>;
   for (const definition of definitions) {

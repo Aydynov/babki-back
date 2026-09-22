@@ -2,6 +2,7 @@ import { INestApplicationContext } from '@nestjs/common';
 import { IncomesService } from '../../modules/transactions/incomes/incomes.service';
 import { ExpensesService } from '../../modules/transactions/expenses/expenses.service';
 import { SavesService } from '../../modules/transactions/saves/saves.service';
+import { TransactionsService } from '../../modules/transactions/transactions/transactions.service';
 import { CategoryMap } from './03-categories';
 import { getSeedDate } from './seed-date.utils';
 
@@ -15,6 +16,7 @@ export async function seedTransactions(
   const incomes = app.get(IncomesService);
   const expenses = app.get(ExpensesService);
   const saves = app.get(SavesService);
+  const transactions = app.get(TransactionsService);
 
   // ── Rolling transaction history ─────────────────────────────────────────────
 
@@ -753,4 +755,12 @@ export async function seedTransactions(
     transactionDate: getSeedDate(0, 28, anchorDate),
     description: 'Monthly savings',
   });
+
+  const deletedIncome = await incomes.create(userId, {
+    amount: 1234,
+    transactionDate: getSeedDate(0, 27, anchorDate),
+    description: 'Deletion test: soft-deleted income',
+    source: 'Lifecycle fixture',
+  });
+  await transactions.delete(userId, String(deletedIncome._id));
 }

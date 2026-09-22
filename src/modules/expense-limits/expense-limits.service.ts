@@ -7,10 +7,15 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { InjectModel } from '@nestjs/mongoose';
+import { InjectConnection, InjectModel } from '@nestjs/mongoose';
 import { endOfDay, endOfMonth, startOfDay } from 'date-fns';
 import { startOfMonth } from 'date-fns/startOfMonth';
-import { Model, Types } from 'mongoose';
+import { Connection, Model, Types } from 'mongoose';
+import { lockPersonalExpenseCategory } from '../expense-categories/expense-category-lock';
+import {
+  ExpenseCategory,
+  ExpenseCategoryDocument,
+} from '../expense-categories/schemas/expense-category.schema';
 import { ExpenseCategoriesService } from '../expense-categories/expense-categories.service';
 import { ExpensesService } from '../transactions/expenses/expenses.service';
 import { CreateExpenseLimitDto } from './dto/create.dto';
@@ -45,45 +50,58 @@ export class ExpenseLimitsService {
   constructor(
     @InjectModel(ExpenseLimit.name)
     private readonly expenseLimitModel: Model<ExpenseLimitDocument>,
+    @InjectModel(ExpenseCategory.name)
+    private readonly expenseCategoryModel: Model<ExpenseCategoryDocument>,
     private readonly expensesService: ExpensesService,
     private readonly expenseCategoriesService: ExpenseCategoriesService,
+    @InjectConnection() private readonly connection: Connection,
   ) {}
 
   async create(userId: string, createExpenseLimitDto: CreateExpenseLimitDto) {
-    const foundCategory = await this.expenseCategoriesService.findOne(
-      userId,
-      createExpenseLimitDto.categoryId,
-    );
-
-    const foundLimit = await this.findAll(userId, {
-      categoryId: createExpenseLimitDto.categoryId,
-      periodDate: new Date().toISOString(),
-    });
-
-    if (foundLimit.length) {
-      throw new ConflictException(
-        'An expense limit on this date already exists.',
-      );
-    }
-
     const startDate = createExpenseLimitDto.startDate
       ? startOfDay(createExpenseLimitDto.startDate)
       : startOfMonth(new Date());
     const endDate = endOfDay(
       createExpenseLimitDto.endDate ?? endOfMonth(new Date()),
     );
-
-    const limit = await (
-      await this.expenseLimitModel.create({
-        ...createExpenseLimitDto,
-        startDate,
-        endDate,
-        category: foundCategory._id,
-        ...personalBudget(foundCategory.userId),
-      })
-    ).populate('category');
-
-    return this.buildResponse(limit);
+    const session = await this.connection.startSession();
+    try {
+      return await session.withTransaction(async () => {
+        const foundCategory = await lockPersonalExpenseCategory(
+          this.expenseCategoryModel,
+          userId,
+          createExpenseLimitDto.categoryId,
+          session,
+        );
+        const overlapping = await this.expenseLimitModel
+          .exists({
+            ...personalBudget(new Types.ObjectId(userId)),
+            category: foundCategory._id,
+            startDate: { $lte: endDate },
+            endDate: { $gte: startDate },
+          })
+          .session(session);
+        if (overlapping) {
+          throw new ConflictException('Expense limit period overlaps.');
+        }
+        const [created] = await this.expenseLimitModel.create(
+          [
+            {
+              ...createExpenseLimitDto,
+              startDate,
+              endDate,
+              category: foundCategory._id,
+              ...personalBudget(new Types.ObjectId(userId)),
+            },
+          ],
+          { session },
+        );
+        const limit = await created.populate('category');
+        return this.buildResponse(limit);
+      });
+    } finally {
+      await session.endSession();
+    }
   }
 
   async findAll(userId: string, queryDto: FindExpenseLimitQueryDto) {

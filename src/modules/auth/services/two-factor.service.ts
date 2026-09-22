@@ -220,6 +220,50 @@ export class TwoFactorService {
     return this.challengeService.issue(userId, state.authVersion);
   }
 
+  async assertDeletionStepUp(
+    userId: string,
+    password: string,
+    token?: string,
+    now = new Date(),
+  ) {
+    await this.assertPassword(userId, password);
+    const credential = await this.loadCredential(userId);
+    if (!credential || credential.status !== 'enabled') return;
+    if (!token) {
+      throw new UnauthorizedException('Invalid authentication credentials.');
+    }
+    const decrypted = this.encryptionService.decrypt(
+      userId,
+      credential.secretEnvelope,
+    );
+    const timeStep = await this.totpService.verify(
+      decrypted.plaintext,
+      token,
+      Math.floor(now.getTime() / 1000),
+    );
+    if (
+      timeStep === null ||
+      (credential.lastAcceptedTimeStep !== undefined &&
+        timeStep <= credential.lastAcceptedTimeStep)
+    ) {
+      throw new UnauthorizedException('Invalid authentication credentials.');
+    }
+    const accepted = await this.twoFactorModel.updateOne(
+      {
+        _id: credential._id,
+        status: 'enabled',
+        $or: [
+          { lastAcceptedTimeStep: { $exists: false } },
+          { lastAcceptedTimeStep: { $lt: timeStep } },
+        ],
+      },
+      { $set: { lastAcceptedTimeStep: timeStep } },
+    );
+    if (!accepted.matchedCount) {
+      throw new UnauthorizedException('Invalid authentication credentials.');
+    }
+  }
+
   async completeLogin(
     challengeToken: string,
     method: SecondFactorMethod,

@@ -17,6 +17,9 @@ import { CreateExpenseDto } from './dto/create-expense.dto';
 import { ListExpensesQueryDto } from './dto/list-expenses-query.dto';
 import { UpdateExpenseDto } from './dto/update-expense.dto';
 import { Expense, ExpenseDocument } from '../schemas/expense.schema';
+import { TransactionOrigin } from '../schemas/transaction.schema';
+import { activeTransactionFilter } from '../transactions/active-transaction.filter';
+import { lockPersonalExpenseCategory } from '../../expense-categories/expense-category-lock';
 
 @Injectable()
 export class ExpensesService {
@@ -34,12 +37,14 @@ export class ExpensesService {
     userId: string,
     createExpenseDto: CreateExpenseDto,
     session?: ClientSession,
+    origin?: TransactionOrigin,
   ) {
-    if (session) return this._doCreate(userId, createExpenseDto, session);
+    if (session)
+      return this._doCreate(userId, createExpenseDto, session, origin);
     const s = await this.connection.startSession();
     try {
       return await s.withTransaction(() =>
-        this._doCreate(userId, createExpenseDto, s),
+        this._doCreate(userId, createExpenseDto, s, origin),
       );
     } finally {
       await s.endSession();
@@ -50,6 +55,7 @@ export class ExpensesService {
     userId: string,
     dto: CreateExpenseDto,
     session: ClientSession,
+    origin?: TransactionOrigin,
   ) {
     const foundIds = await this.transactionsService.ensureUserExists(
       userId,
@@ -87,6 +93,7 @@ export class ExpensesService {
           description: dto.description,
           merchant: dto.merchant,
           items: dto.items ?? [],
+          origin,
         },
       ],
       { session },
@@ -136,6 +143,19 @@ export class ExpensesService {
     return this.expenseModel.countDocuments(filter);
   }
 
+  async countHistoryByFilters(
+    userId: string,
+    query: Omit<ListExpensesQueryDto, keyof PaginationQueryDto>,
+    session?: ClientSession,
+  ) {
+    const filter = this.buildFilter(new Types.ObjectId(userId), query);
+    const { deletedAt: _deletedAt, ...historyFilter } = filter;
+    const countQuery = this.expenseModel.countDocuments(historyFilter);
+    return session && typeof countQuery.session === 'function'
+      ? countQuery.session(session)
+      : countQuery;
+  }
+
   async findOne(userId: string, expenseId: string, session?: ClientSession) {
     const foundIds = await this.transactionsService.ensureUserExists(
       userId,
@@ -146,6 +166,7 @@ export class ExpensesService {
       .findOne({
         _id: expenseId,
         ...personalBudget(foundIds.userId),
+        ...activeTransactionFilter,
       })
       .populate('category')
       .session(session ?? null)
@@ -218,7 +239,11 @@ export class ExpensesService {
         // TODO Проверить с пустыми значениями для удаления
         const updatedExpense = await this.expenseModel
           .findOneAndUpdate(
-            { _id: expenseId, ...personalBudget(new Types.ObjectId(userId)) },
+            {
+              _id: expenseId,
+              ...personalBudget(new Types.ObjectId(userId)),
+              ...activeTransactionFilter,
+            },
             { $set: updatePayload },
             {
               returnDocument: 'after',
@@ -261,21 +286,14 @@ export class ExpensesService {
   private async ensureCategoryExists(
     userId: string,
     categoryId: string,
-    session?: ClientSession,
+    session: ClientSession,
   ) {
-    const foundCategory = await this.expenseCategoryModel
-      .exists({
-        _id: categoryId,
-        ...personalBudget(new Types.ObjectId(userId)),
-      })
-      .session(session ?? null);
-
-    if (!foundCategory) {
-      throw new NotFoundException(
-        `Expense category ${categoryId} for user ${userId} not found.`,
-      );
-    }
-
-    return foundCategory._id;
+    const category = await lockPersonalExpenseCategory(
+      this.expenseCategoryModel,
+      userId,
+      categoryId,
+      session,
+    );
+    return category._id;
   }
 }

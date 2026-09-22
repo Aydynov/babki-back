@@ -2,9 +2,13 @@ import {
   personalBudget,
   personalResponse,
 } from 'src/common/utils/personal-budget.util';
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { InjectConnection, InjectModel } from '@nestjs/mongoose';
-import { Connection, Model, Types } from 'mongoose';
+import { ClientSession, Connection, Model, Types } from 'mongoose';
+import {
+  DeletionRestrictedException,
+  DeletionTargetNotFoundException,
+} from 'src/common/lifecycle/deletion-policy';
 import { AccountsSnapshotsService } from 'src/modules/accounts-snapshots/accounts-snapshots.service';
 import { AccountSnapshotsDocument } from 'src/modules/accounts-snapshots/schemas/accounts-snapshots.schema';
 import { TransactionsService } from 'src/modules/transactions/transactions/transactions.service';
@@ -60,7 +64,13 @@ export class AccountsService {
     try {
       return await session.withTransaction(async () => {
         const [createdEntity] = await this.accountModel.create(
-          [{ ...personalBudget(foundUserId), type: query.type }],
+          [
+            {
+              ...personalBudget(foundUserId),
+              type: query.type,
+              initialAmount: createAccountDto.amount ?? 0,
+            },
+          ],
           { session },
         );
         const snapshot = await this.snapshotsService.create(
@@ -82,13 +92,30 @@ export class AccountsService {
     const session = await this.connection.startSession();
     try {
       return await session.withTransaction(async () => {
-        await this.transactionService.lockAccounts(userId, [entityId], session);
+        await this.lockAccountForLifecycle(userId, entityId, session);
+        const account = await this.accountModel
+          .findOne({ _id: entityId, ...personalBudget(userId) })
+          .session(session)
+          .lean()
+          .exec();
+        if (!account) throw new DeletionTargetNotFoundException('Account');
+        if ((account.initialAmount ?? 0) !== 0) {
+          throw new DeletionRestrictedException(
+            'Account with an initial balance cannot be deleted',
+          );
+        }
+        if (
+          await this.transactionService.hasHistoryByAccountId(
+            userId,
+            entityId,
+            session,
+          )
+        ) {
+          throw new DeletionRestrictedException(
+            'Account has financial history',
+          );
+        }
         await this.snapshotsService.deleteAllByAccountId(
-          userId,
-          entityId,
-          session,
-        );
-        await this.transactionService.deleteAllByAccountId(
           userId,
           entityId,
           session,
@@ -97,9 +124,32 @@ export class AccountsService {
           { _id: entityId, ...personalBudget(userId) },
           { session },
         );
-        if (!deleted)
-          throw new NotFoundException(`Account ${entityId} not found.`);
+        if (!deleted) throw new DeletionTargetNotFoundException('Account');
         return null;
+      });
+    } finally {
+      await session.endSession();
+    }
+  }
+
+  async archive(userId: string, entityId: string) {
+    const session = await this.connection.startSession();
+    try {
+      return await session.withTransaction(async () => {
+        await this.lockAccountForLifecycle(userId, entityId, session);
+        const archived = await this.accountModel
+          .findOneAndUpdate(
+            {
+              _id: entityId,
+              ...personalBudget(userId),
+              archivedAt: null,
+            },
+            { $set: { archivedAt: new Date() } },
+            { returnDocument: 'after', session },
+          )
+          .lean()
+          .exec();
+        if (!archived) throw new DeletionTargetNotFoundException('Account');
       });
     } finally {
       await session.endSession();
@@ -147,5 +197,20 @@ export class AccountsService {
     }
 
     return filter;
+  }
+
+  private async lockAccountForLifecycle(
+    userId: string,
+    entityId: string,
+    session: ClientSession,
+  ) {
+    const locked = await this.accountModel.updateOne(
+      { _id: entityId, ...personalBudget(userId) },
+      { $inc: { mutationVersion: 1 } },
+      { session },
+    );
+    if (!locked.matchedCount) {
+      throw new DeletionTargetNotFoundException('Account');
+    }
   }
 }

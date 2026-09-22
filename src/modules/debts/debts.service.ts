@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -18,6 +19,10 @@ import { ListDebtsQueryDto } from './dto/list-debts-query.dto';
 import { RepayDebtDto } from './dto/repay-debt.dto';
 import { UpdateDebtDto } from './dto/update-debt.dto';
 import { Debt, DebtDocument } from './schemas/debt.schema';
+import {
+  Transaction,
+  TransactionDocument,
+} from '../transactions/schemas/transaction.schema';
 
 @Injectable()
 export class DebtsService {
@@ -26,6 +31,8 @@ export class DebtsService {
     @InjectModel(User.name) private readonly userModel: Model<UserDocument>,
     @InjectModel(DebtTransaction.name)
     private readonly debtTransactionModel: Model<DebtTransactionDocument>,
+    @InjectModel(Transaction.name)
+    private readonly transactionModel: Model<TransactionDocument>,
     private readonly incomeService: IncomesService,
     @InjectConnection() private readonly connection: Connection,
   ) {}
@@ -54,8 +61,9 @@ export class DebtsService {
     const { page, limit, skip } = getPagination(query);
     const filter: {
       userId: Types.ObjectId;
+      archivedAt: null;
       status?: 'active' | 'closed';
-    } = { userId: foundUserId };
+    } = { userId: foundUserId, archivedAt: null };
 
     if (query.status) {
       filter.status = query.status;
@@ -79,7 +87,7 @@ export class DebtsService {
     const foundUserId = await this.ensureUserExists(userId);
 
     const debt = await this.debtModel
-      .findOne({ _id: debtId, userId: foundUserId })
+      .findOne({ _id: debtId, userId: foundUserId, archivedAt: null })
       .lean()
       .exec();
 
@@ -115,10 +123,14 @@ export class DebtsService {
     this.validateAmounts(principal, remaining);
 
     return this.debtModel
-      .findOneAndUpdate({ _id: debtId, userId: foundUserId }, updateDebtDto, {
-        returnDocument: 'after',
-        runValidators: true,
-      })
+      .findOneAndUpdate(
+        { _id: debtId, userId: foundUserId, archivedAt: null },
+        updateDebtDto,
+        {
+          returnDocument: 'after',
+          runValidators: true,
+        },
+      )
       .lean()
       .exec();
   }
@@ -127,7 +139,7 @@ export class DebtsService {
     const foundUserId = await this.ensureUserExists(userId);
 
     const currentDebt = await this.debtModel
-      .findOne({ _id: debtId, userId: foundUserId })
+      .findOne({ _id: debtId, userId: foundUserId, archivedAt: null })
       .lean()
       .exec();
 
@@ -174,6 +186,7 @@ export class DebtsService {
               source: `Погашение долга ${currentDebt.debtor}`,
             },
             session,
+            { type: 'debt', id: new Types.ObjectId(debtId) },
           );
         }
 
@@ -185,7 +198,7 @@ export class DebtsService {
 
         const debt = await this.debtModel
           .findOneAndUpdate(
-            { _id: debtId, userId: foundUserId },
+            { _id: debtId, userId: foundUserId, archivedAt: null },
             { remainingAmount, status },
             { returnDocument: 'after', runValidators: true, session },
           )
@@ -211,23 +224,54 @@ export class DebtsService {
     const session = await this.connection.startSession();
     try {
       return await session.withTransaction(async () => {
-        const deletedDebt = await this.debtModel
-          .findOneAndDelete({ _id: debtId, userId: foundUserId }, { session })
+        const debt = await this.debtModel
+          .findOne({ _id: debtId, userId: foundUserId })
+          .session(session)
+          .lean()
           .exec();
-
-        if (!deletedDebt) {
+        if (!debt) {
           throw new NotFoundException(
             `Debt ${debtId} for user ${userId} not found.`,
           );
         }
-
-        await this.debtTransactionModel.deleteMany(
-          { userId: foundUserId, debtId: new Types.ObjectId(debtId) },
+        const repayment = await this.debtTransactionModel
+          .exists({ debtId: new Types.ObjectId(debtId) })
+          .session(session);
+        const generatedIncome = await this.transactionModel
+          .exists({
+            'origin.type': 'debt',
+            'origin.id': new Types.ObjectId(debtId),
+          })
+          .session(session);
+        if (repayment || generatedIncome) {
+          throw new ConflictException(
+            'Cannot delete a debt with financial history; archive it instead.',
+          );
+        }
+        const deletedDebt = await this.debtModel.findOneAndDelete(
+          { _id: debtId, userId: foundUserId, archivedAt: null },
           { session },
         );
+        if (!deletedDebt) {
+          throw new ConflictException('Debt state changed; retry the request.');
+        }
       });
     } finally {
       await session.endSession();
+    }
+  }
+
+  async archive(userId: string, debtId: string) {
+    const foundUserId = await this.ensureUserExists(userId);
+    const archived = await this.debtModel.findOneAndUpdate(
+      { _id: debtId, userId: foundUserId, archivedAt: null },
+      { $set: { archivedAt: new Date() } },
+      { returnDocument: 'after' },
+    );
+    if (!archived) {
+      throw new NotFoundException(
+        `Debt ${debtId} for user ${userId} not found.`,
+      );
     }
   }
 

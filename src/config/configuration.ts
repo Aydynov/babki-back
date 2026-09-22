@@ -357,5 +357,12 @@ export default () => {
         10,
       ),
     },
+    userDeletion: {
+      enabled: parseBoolean(process.env.USER_DELETION_ENABLED, false),
+      leaseSeconds: parsePositiveInteger(
+        process.env.USER_DELETION_LEASE_SECONDS,
+        300,
+      ),
+    },
   };
 };

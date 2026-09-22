@@ -20,6 +20,7 @@ export class Account {
   ownerId: Types.ObjectId;
 
   @Prop({ default: 0 }) mutationVersion: number;
+  @Prop({ type: Date, default: null }) archivedAt: Date | null;
   @Prop() initialAmount?: number;
   @Prop() openedAt?: Date;
 
@@ -37,3 +38,4 @@ AccountsSchema.index(
 );
 
 AccountsSchema.index({ ownerType: 1, ownerId: 1 });
+AccountsSchema.index({ ownerType: 1, ownerId: 1, archivedAt: 1 });

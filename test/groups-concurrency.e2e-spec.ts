@@ -230,14 +230,91 @@ describe('Groups concurrent transactions (real MongoDB replica set)', () => {
       ).toBeInstanceOf(Date);
       expect(await events(groupId, 'group-deleted')).toBe(1);
       expect(await events(groupId, 'joined')).toBe(acceptFirst ? 2 : 1);
-      // Physical membership history is retained even though effective access ends.
-      expect(await activeMembers(groupId)).toBe(acceptFirst ? 2 : 1);
+      // Physical membership history is retained, but every active period ends.
+      expect(await activeMembers(groupId)).toBe(0);
+      expect(
+        await collection('groupmemberships').countDocuments({
+          groupId: objectId(groupId),
+          status: 'removed',
+          endReason: 'group_deleted',
+          endedAt: { $type: 'date' },
+        }),
+      ).toBe(acceptFirst ? 2 : 1);
+      if (!acceptFirst) {
+        const storedInvitation = await collection('groupinvitations').findOne({
+          _id: objectId(idOf(invitation)),
+        });
+        expect(storedInvitation).toMatchObject({
+          status: 'revoked',
+          revocationReason: 'group_deleted',
+          revokedAt: expect.any(Date),
+        });
+        const deletedGroup = await collection('groups').findOne({
+          _id: objectId(groupId),
+        });
+        const endedMembership = await collection('groupmemberships').findOne({
+          groupId: objectId(groupId),
+        });
+        expect(storedInvitation?.revokedAt).toEqual(deletedGroup?.deletedAt);
+        expect(endedMembership?.endedAt).toEqual(deletedGroup?.deletedAt);
+      }
       await request(
         harness.app.getHttpServer() as Parameters<typeof request>[0],
       )
         .get(`/api/v1/groups/${groupId}`)
         .auth(harness.users[1].token, { type: 'bearer' })
         .expect(404);
+    },
+  );
+
+  it.each([true, false])(
+    'serializes member leave against deletion (leave first: %s)',
+    async (leaveFirst) => {
+      const groupId = await group();
+      await join(groupId, 1);
+      const leave = () => api(1).post(`/groups/${groupId}/leave`);
+      const deletion = () => api(0).delete(`/groups/${groupId}`);
+      const responses = await race(
+        leaveFirst ? leave : deletion,
+        leaveFirst ? deletion : leave,
+      );
+      expect(responses.map(({ status }) => status)).toEqual(
+        leaveFirst ? [204, 204] : [204, 404],
+      );
+      expect(await activeMembers(groupId)).toBe(0);
+      const member = await collection('groupmemberships').findOne({
+        groupId: objectId(groupId),
+        userId: objectId(harness.users[1].id),
+      });
+      expect(member?.endReason).toBe(
+        leaveFirst ? 'member_left' : 'group_deleted',
+      );
+    },
+  );
+
+  it.each([true, false])(
+    'serializes member removal against group deletion (removal first: %s)',
+    async (removalFirst) => {
+      const groupId = await group();
+      await join(groupId, 1);
+      const removal = () =>
+        api(0).delete(`/groups/${groupId}/members/${harness.users[1].id}`);
+      const deletion = () => api(0).delete(`/groups/${groupId}`);
+      const responses = await race(
+        removalFirst ? removal : deletion,
+        removalFirst ? deletion : removal,
+      );
+      expect(responses.map(({ status }) => status)).toEqual(
+        removalFirst ? [204, 204] : [204, 404],
+      );
+      expect(await activeMembers(groupId)).toBe(0);
+      const member = await collection('groupmemberships').findOne({
+        groupId: objectId(groupId),
+        userId: objectId(harness.users[1].id),
+      });
+      expect(member?.endReason).toBe(
+        removalFirst ? 'member_removed' : 'group_deleted',
+      );
     },
   );
 
@@ -344,6 +421,7 @@ describe('Groups concurrent transactions (real MongoDB replica set)', () => {
       expect(await events(groupId, 'group-deleted')).toBe(
         transferFirst ? 0 : 1,
       );
+      expect(await activeMembers(groupId)).toBe(transferFirst ? 2 : 0);
     },
   );
 

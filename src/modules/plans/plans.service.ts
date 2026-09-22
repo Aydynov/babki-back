@@ -1,10 +1,11 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectConnection, InjectModel } from '@nestjs/mongoose';
-import { Connection, Model, Types } from 'mongoose';
+import { ClientSession, Connection, Model, Types } from 'mongoose';
 import { PaginatedResponse } from '../../common/interfaces/paginated-response.interface';
 import { getPagination } from '../../common/utils/pagination.util';
 import {
@@ -18,6 +19,7 @@ import { CreatePlanDto } from './dto/create-plan.dto';
 import { ListPlansQueryDto } from './dto/list-plans-query.dto';
 import { UpdatePlanDto } from './dto/update-plan.dto';
 import { Plan, PlanDocument, PlanStatus } from './schemas/plan.schema';
+import { lockPersonalExpenseCategory } from '../expense-categories/expense-category-lock';
 
 @Injectable()
 export class PlansService {
@@ -31,15 +33,25 @@ export class PlansService {
   ) {}
 
   async create(userId: string, createPlanDto: CreatePlanDto) {
-    const foundUserId = await this.ensureUserExists(userId);
-    await this.ensureCategoryExists(userId, createPlanDto.categoryId);
-
-    const plan = await this.planModel.create({
-      userId: foundUserId,
-      ...createPlanDto,
-    });
-
-    return plan.toObject();
+    const session = await this.connection.startSession();
+    try {
+      return await session.withTransaction(async () => {
+        const foundUserId = await this.ensureUserExists(userId, session);
+        await lockPersonalExpenseCategory(
+          this.expenseCategoryModel,
+          userId,
+          createPlanDto.categoryId,
+          session,
+        );
+        const [plan] = await this.planModel.create(
+          [{ userId: foundUserId, ...createPlanDto }],
+          { session },
+        );
+        return plan.toObject();
+      });
+    } finally {
+      await session.endSession();
+    }
   }
 
   async findAll(
@@ -49,8 +61,13 @@ export class PlansService {
     const foundUserId = await this.ensureUserExists(userId);
     const { page, limit, skip } = getPagination(query);
 
-    const filter: { userId: Types.ObjectId; status?: PlanStatus } = {
+    const filter: {
+      userId: Types.ObjectId;
+      archivedAt: null;
+      status?: PlanStatus;
+    } = {
       userId: foundUserId,
+      archivedAt: null,
     };
     if (query.status) {
       filter.status = query.status;
@@ -74,7 +91,7 @@ export class PlansService {
     const foundUserId = await this.ensureUserExists(userId);
 
     const plan = await this.planModel
-      .findOne({ _id: planId, userId: foundUserId })
+      .findOne({ _id: planId, userId: foundUserId, archivedAt: null })
       .lean()
       .exec();
 
@@ -88,53 +105,99 @@ export class PlansService {
   }
 
   async update(userId: string, planId: string, updatePlanDto: UpdatePlanDto) {
-    const foundUserId = await this.ensureUserExists(userId);
+    const session = await this.connection.startSession();
+    try {
+      return await session.withTransaction(async () => {
+        const foundUserId = await this.ensureUserExists(userId, session);
+        const currentPlanQuery = this.planModel.findOne({
+          _id: planId,
+          userId: foundUserId,
+        });
+        if (typeof currentPlanQuery.session === 'function') {
+          currentPlanQuery.session(session);
+        }
+        const currentPlan = await currentPlanQuery.lean().exec();
 
-    const currentPlan = await this.planModel
-      .findOne({ _id: planId, userId: foundUserId })
-      .lean()
-      .exec();
-
-    if (!currentPlan) {
-      throw new NotFoundException(
-        `Plan ${planId} for user ${userId} not found.`,
-      );
+        if (!currentPlan) {
+          throw new NotFoundException(
+            `Plan ${planId} for user ${userId} not found.`,
+          );
+        }
+        if (currentPlan.status === 'closed') {
+          throw new BadRequestException('Cannot update a closed plan.');
+        }
+        if (updatePlanDto.categoryId) {
+          await lockPersonalExpenseCategory(
+            this.expenseCategoryModel,
+            userId,
+            updatePlanDto.categoryId,
+            session,
+          );
+        }
+        const updatePayload = Object.fromEntries(
+          Object.entries({
+            description: updatePlanDto.description,
+            targetDate: updatePlanDto.targetDate,
+            amount: updatePlanDto.amount,
+            categoryId: updatePlanDto.categoryId,
+          }).filter(([, value]) => value !== undefined),
+        );
+        return this.planModel
+          .findOneAndUpdate(
+            { _id: planId, userId: foundUserId, archivedAt: null },
+            updatePayload,
+            {
+              returnDocument: 'after',
+              runValidators: true,
+              session,
+            },
+          )
+          .lean()
+          .exec();
+      });
+    } finally {
+      await session.endSession();
     }
-
-    if (currentPlan.status === 'closed') {
-      throw new BadRequestException('Cannot update a closed plan.');
-    }
-
-    if (updatePlanDto.categoryId) {
-      await this.ensureCategoryExists(userId, updatePlanDto.categoryId);
-    }
-
-    const updatePayload = Object.fromEntries(
-      Object.entries({
-        description: updatePlanDto.description,
-        targetDate: updatePlanDto.targetDate,
-        amount: updatePlanDto.amount,
-        categoryId: updatePlanDto.categoryId,
-      }).filter(([, value]) => value !== undefined),
-    );
-
-    return this.planModel
-      .findOneAndUpdate({ _id: planId, userId: foundUserId }, updatePayload, {
-        returnDocument: 'after',
-        runValidators: true,
-      })
-      .lean()
-      .exec();
   }
 
   async remove(userId: string, planId: string) {
     const foundUserId = await this.ensureUserExists(userId);
-
-    const deleted = await this.planModel
-      .findOneAndDelete({ _id: planId, userId: foundUserId })
+    const plan = await this.planModel
+      .findOne({ _id: planId, userId: foundUserId })
+      .lean()
       .exec();
-
+    if (!plan) {
+      throw new NotFoundException(
+        `Plan ${planId} for user ${userId} not found.`,
+      );
+    }
+    if (plan.status !== 'active' || plan.expenseId) {
+      throw new ConflictException(
+        'Cannot delete a plan with financial history; archive it instead.',
+      );
+    }
+    const deleted = await this.planModel
+      .findOneAndDelete({
+        _id: planId,
+        userId: foundUserId,
+        status: 'active',
+        archivedAt: null,
+        expenseId: { $exists: false },
+      })
+      .exec();
     if (!deleted) {
+      throw new ConflictException('Plan state changed; retry the request.');
+    }
+  }
+
+  async archive(userId: string, planId: string) {
+    const foundUserId = await this.ensureUserExists(userId);
+    const archived = await this.planModel.findOneAndUpdate(
+      { _id: planId, userId: foundUserId, archivedAt: null },
+      { $set: { archivedAt: new Date() } },
+      { returnDocument: 'after' },
+    );
+    if (!archived) {
       throw new NotFoundException(
         `Plan ${planId} for user ${userId} not found.`,
       );
@@ -145,7 +208,7 @@ export class PlansService {
     const foundUserId = await this.ensureUserExists(userId);
 
     const plan = await this.planModel
-      .findOne({ _id: planId, userId: foundUserId })
+      .findOne({ _id: planId, userId: foundUserId, archivedAt: null })
       .lean()
       .exec();
 
@@ -176,11 +239,17 @@ export class PlansService {
             description,
           },
           session,
+          { type: 'plan', id: new Types.ObjectId(planId) },
         );
 
         const closedPlan = await this.planModel
           .findOneAndUpdate(
-            { _id: planId, userId: foundUserId, status: 'active' },
+            {
+              _id: planId,
+              userId: foundUserId,
+              status: 'active',
+              archivedAt: null,
+            },
             {
               status: 'closed',
               closedAt: new Date(),
@@ -202,26 +271,15 @@ export class PlansService {
     }
   }
 
-  private async ensureUserExists(userId: string) {
-    const found = await this.userModel.exists({ _id: userId });
+  private async ensureUserExists(userId: string, session?: ClientSession) {
+    const query = this.userModel.exists({ _id: userId });
+    const found =
+      session && typeof query.session === 'function'
+        ? await query.session(session)
+        : await query;
 
     if (!found) {
       throw new NotFoundException(`User ${userId} not found.`);
-    }
-
-    return found._id;
-  }
-
-  private async ensureCategoryExists(userId: string, categoryId: string) {
-    const found = await this.expenseCategoryModel.exists({
-      _id: categoryId,
-      userId: new Types.ObjectId(userId),
-    });
-
-    if (!found) {
-      throw new NotFoundException(
-        `Expense category ${categoryId} for user ${userId} not found.`,
-      );
     }
 
     return found._id;

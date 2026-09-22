@@ -173,11 +173,41 @@ export async function seedGroups(
     status: 'pending',
   });
 
+  const deleted = await createGroup(
+    groups,
+    users.maria,
+    'Deletion test: deleted group',
+    'organization',
+  );
+  await addMembers(memberships, deleted.id, [{ userId: users.alex }]);
+  await seedOrganizationFinances(
+    wallets,
+    settings,
+    transactions,
+    deleted,
+    users.alex,
+    anchorDate,
+    'Историческая категория',
+    50000,
+    12500,
+  );
+  await invitations.create({
+    groupId: deleted.id,
+    createdBy: users.maria,
+    tokenDigest: createHash('sha256')
+      .update('babki-development-deleted-group-invitation')
+      .digest('hex'),
+    expiresAt: new Date(anchorDate.getTime() + 30 * 86400000),
+    status: 'pending',
+  });
+  await groups.remove(users.maria, deleted.id);
+
   return {
     family,
     studio,
     agency,
     sandbox,
+    deleted,
     invitationToken,
   };
 }

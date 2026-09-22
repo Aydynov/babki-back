@@ -41,6 +41,7 @@ export async function startGroupsTestApp() {
       { mode: 0o600 },
     );
     process.env.NODE_ENV = 'test';
+    process.env.USER_DELETION_ENABLED = 'true';
     process.env.SECRETS_FILE_PATH = secretsPath;
     const module = await Test.createTestingModule({
       imports: [AppModule],

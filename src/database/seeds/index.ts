@@ -25,6 +25,11 @@ const COLLECTIONS = [
   'groupmembershipevents',
   'groupinvitations',
   'groupinvitationratelimits',
+  'userdeletionjobs',
+  'authchallenges',
+  'authratelimits',
+  'securityauditevents',
+  'usertwofactors',
 ];
 
 async function clearDatabase(connection: Connection) {
@@ -40,11 +45,20 @@ export async function runSeeders(app: INestApplicationContext) {
   await clearDatabase(connection);
 
   const { userId, users, password } = await seedUsers(app);
-  console.log(`👤 Users seeded  (4 total, password: ${password})`);
+  console.log(`👤 Users seeded  (5 total, password: ${password})`);
 
   const { balanceAccountId, savingAccountId } = await seedAccounts(app, userId);
   console.log(
     `🏦 Accounts seeded  (balance: ${balanceAccountId}, saving: ${savingAccountId})`,
+  );
+
+  const deletionCandidateAccounts = await seedAccounts(
+    app,
+    users.deletionCandidate,
+    { archiveSaving: true },
+  );
+  console.log(
+    `🧪 Deletion candidate  (email: delete-me@test.com, deletable account: ${deletionCandidateAccounts.balanceAccountId}, archived account: ${deletionCandidateAccounts.savingAccountId})`,
   );
 
   const categories = await seedCategories(app, userId);
@@ -53,18 +67,20 @@ export async function runSeeders(app: INestApplicationContext) {
   );
 
   await seedTransactions(app, userId, balanceAccountId, categories, anchorDate);
-  console.log('💸 Transactions seeded  (116 total)');
+  console.log('💸 Transactions seeded  (116 active, 1 soft-deleted)');
 
   await seedLimits(app, userId, categories, anchorDate);
   console.log('📊 Limits seeded  (2 total)');
 
   await seedDebts(app, userId, anchorDate);
-  console.log('💳 Debts seeded  (2 total)');
+  console.log('💳 Debts seeded  (active with history, archived, deletable)');
 
   await seedPlans(app, userId, categories, anchorDate);
   console.log('📋 Plans seeded  (7 total)');
 
   const groupFixtures = await seedGroups(app, users, anchorDate);
-  console.log('👥 Groups seeded  (family, 2 organizations, empty budget)');
+  console.log(
+    '👥 Groups seeded  (family, 2 organizations, empty budget, deleted history)',
+  );
   console.log(`✉️  Pending invitation token: ${groupFixtures.invitationToken}`);
 }

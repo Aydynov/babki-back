@@ -23,6 +23,7 @@ import {
   Transaction,
   TransactionDocument,
 } from '../transactions/schemas/transaction.schema';
+import { activeTransactionFilter } from '../transactions/transactions/active-transaction.filter';
 import { MonthlyReportsQueryDto } from './dto/monthly-reports-query.dto';
 import { ReportsQueryDto } from './dto/reports-query.dto';
 import { PeriodReport } from './interfaces/period-report.interface';
@@ -168,11 +169,15 @@ export class ReportsService {
       userId: Types.ObjectId;
       ownerType: 'user';
       ownerId: Types.ObjectId;
+      deletedAt: null;
       transactionDate?: { $gte: Date; $lte: Date };
       $or?: (
         { type: { $ne: string } } | { category: { $in: Types.ObjectId[] } }
       )[];
-    } = { ...personalBudget(new Types.ObjectId(userId)) };
+    } = {
+      ...personalBudget(new Types.ObjectId(userId)),
+      ...activeTransactionFilter,
+    };
 
     if (dateRange) {
       match.transactionDate = {

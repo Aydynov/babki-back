@@ -63,6 +63,7 @@ POST /auth/two-factor/setup
 POST /auth/two-factor/setup/confirm
 POST /auth/two-factor/disable
 POST /auth/two-factor/recovery/regenerate
+POST /auth/account-deletion
 ```
 
 Public login endpoints:
@@ -149,14 +150,14 @@ Make sure MongoDB is reachable with the configured host, port, credentials, and 
 NODE_ENV=development npm run seed
 ```
 
-Populates the database with:
+Populates the database with five test users (password `Test1234!`), personal
+and group budgets, rolling transaction history, limits, debts and plans. The
+fixtures also include deletable, archived, soft-deleted and deletion-restricted
+records for entity lifecycle testing. Use `delete-me@test.com` for account
+deletion tests; it owns no active group. The command prints the important
+fixture identifiers and the pending group invitation token.
 
-- test user: `test@test.com` / `Test1234!`
-- balance and saving accounts
-- expense categories (Food & Dining, Transport, Utilities, Entertainment, Shopping, Health)
-- expense limits
-- sample transactions from March–June 2026
-- sample debts and plans
+See [the seed scenario catalogue](docs/group-finances-seed.md) for details.
 
 Only works when `NODE_ENV=development`.
 
@@ -239,6 +240,7 @@ GET    /balances
 POST   /savings
 GET    /savings
 DELETE /accounts/:accountId
+POST   /accounts/:accountId/archive
 GET    /accounts/:accountId/snapshots
 ```
 
@@ -289,6 +291,7 @@ GET    /debts
 GET    /debts/:debtId
 PATCH  /debts/:debtId
 DELETE /debts/:debtId
+POST   /debts/:debtId/archive
 POST   /debts/:debtId/repayments
 GET    /debts/:debtId/transactions
 GET    /debts/:debtId/transactions/:debtTransactionId
@@ -302,6 +305,7 @@ GET    /plans
 GET    /plans/:planId
 PATCH  /plans/:planId
 DELETE /plans/:planId
+POST   /plans/:planId/archive
 POST   /plans/:planId/close
 ```
 

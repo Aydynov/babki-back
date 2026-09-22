@@ -3,6 +3,8 @@ import {
   Controller,
   Delete,
   Get,
+  HttpCode,
+  HttpStatus,
   Param,
   Patch,
   Post,
@@ -55,11 +57,21 @@ export class PlansController {
   }
 
   @Delete(':planId')
+  @HttpCode(HttpStatus.NO_CONTENT)
   remove(
     @CurrentUser() currentUser: AuthenticatedUser,
     @Param('planId', ParseObjectIdPipe) planId: string,
   ) {
     return this.plansService.remove(currentUser.userId, planId);
+  }
+
+  @Post(':planId/archive')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  archive(
+    @CurrentUser() currentUser: AuthenticatedUser,
+    @Param('planId', ParseObjectIdPipe) planId: string,
+  ) {
+    return this.plansService.archive(currentUser.userId, planId);
   }
 
   @Post(':planId/close')

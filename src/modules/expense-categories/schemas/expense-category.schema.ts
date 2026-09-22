@@ -26,6 +26,9 @@ export class ExpenseCategory {
 
   @Prop({ default: false })
   isArchived: boolean;
+
+  @Prop({ default: 0 })
+  mutationVersion: number;
 }
 
 export const ExpenseCategorySchema =
@@ -36,3 +39,4 @@ ExpenseCategorySchema.index(
   { unique: true },
 );
 ExpenseCategorySchema.index({ userId: 1 });
+ExpenseCategorySchema.index({ ownerType: 1, ownerId: 1, isArchived: 1 });

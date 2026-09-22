@@ -15,6 +15,7 @@ import { Save, SaveDocument } from '../schemas/save.schema';
 import { TransactionsService } from '../transactions/transactions.service';
 import { CreateSaveDto } from './dto/create-save.dto';
 import { UpdateSaveDto } from './dto/update-save.dto';
+import { activeTransactionFilter } from '../transactions/active-transaction.filter';
 
 @Injectable()
 export class SavesService {
@@ -214,6 +215,7 @@ export class SavesService {
             {
               _id: transactionId,
               ...personalBudget(new Types.ObjectId(userId)),
+              ...activeTransactionFilter,
             },
             { $set: updatePayload },
             {

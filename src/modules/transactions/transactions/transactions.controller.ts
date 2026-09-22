@@ -1,4 +1,12 @@
-import { Controller, Delete, Get, Param, Query } from '@nestjs/common';
+import {
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  Query,
+} from '@nestjs/common';
 import { CurrentUser } from 'src/modules/auth/decorators/current-user.decorator';
 import type { AuthenticatedUser } from 'src/modules/auth/interfaces/authenticated-user.interface';
 import { ParseObjectIdPipe } from 'src/common/pipes/parse-object-id.pipe';
@@ -32,6 +40,7 @@ export class TransactionsController {
   }
 
   @Delete(':transactionId')
+  @HttpCode(HttpStatus.NO_CONTENT)
   delete(
     @CurrentUser() currentUser: AuthenticatedUser,
     @Param('transactionId', ParseObjectIdPipe)

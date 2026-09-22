@@ -3,6 +3,8 @@ import {
   Controller,
   Delete,
   Get,
+  HttpCode,
+  HttpStatus,
   Param,
   Patch,
   Post,
@@ -64,10 +66,20 @@ export class DebtsController {
   }
 
   @Delete(':debtId')
+  @HttpCode(HttpStatus.NO_CONTENT)
   remove(
     @CurrentUser() currentUser: AuthenticatedUser,
     @Param('debtId', ParseObjectIdPipe) debtId: string,
   ) {
     return this.debtsService.remove(currentUser.userId, debtId);
+  }
+
+  @Post(':debtId/archive')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  archive(
+    @CurrentUser() currentUser: AuthenticatedUser,
+    @Param('debtId', ParseObjectIdPipe) debtId: string,
+  ) {
+    return this.debtsService.archive(currentUser.userId, debtId);
   }
 }
