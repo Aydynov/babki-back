@@ -1,5 +1,4 @@
 import { INestApplicationContext } from '@nestjs/common';
-import { UsersService } from '../../modules/users/users.service';
 import { seedUsers } from './01-users';
 
 describe('development users seed', () => {

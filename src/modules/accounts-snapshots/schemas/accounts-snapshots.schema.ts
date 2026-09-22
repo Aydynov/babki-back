@@ -23,5 +23,4 @@ export class AccountSnapshot {
 export const AccountsSnapshotsSchema =
   SchemaFactory.createForClass(AccountSnapshot);
 
-AccountsSnapshotsSchema.index({ accountId: 1, date: -1 });
 AccountsSnapshotsSchema.index({ accountId: 1, date: 1 }, { unique: true });

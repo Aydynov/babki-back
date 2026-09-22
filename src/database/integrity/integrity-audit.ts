@@ -1,7 +1,4 @@
-import {
-  IntegrityRelation,
-  integrityRelations,
-} from './integrity-relations';
+import { IntegrityRelation, integrityRelations } from './integrity-relations';
 
 export type OrphanReference = {
   sourceId: string;

@@ -5,13 +5,13 @@ import { IntegrityRelation } from './integrity-relations';
 export class MongooseIntegrityReader implements IntegrityReader {
   constructor(private readonly connection: Connection) {}
 
-  async findOrphans(
-    relation: IntegrityRelation,
-  ): Promise<OrphanReference[]> {
+  async findOrphans(relation: IntegrityRelation): Promise<OrphanReference[]> {
     const source = this.connection.models[relation.sourceModel];
     const target = this.connection.models[relation.targetModel];
     if (!source || !target) {
-      throw new Error(`Integrity audit model is not registered: ${relation.id}`);
+      throw new Error(
+        `Integrity audit model is not registered: ${relation.id}`,
+      );
     }
 
     const targetMatch: Record<string, unknown> = {

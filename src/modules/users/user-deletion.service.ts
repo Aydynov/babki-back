@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectConnection, InjectModel } from '@nestjs/mongoose';
-import { ClientSession, Connection, Model, Types } from 'mongoose';
+import { Connection, Model, Types } from 'mongoose';
 import { Group } from '../groups/schemas/group.schema';
 import {
   UserDeletionJob,
@@ -93,7 +93,7 @@ export class UserDeletionWorker {
     const job = await this.jobs
       .findOneAndUpdate(
         {
-          stage: { $ne: 'completed' },
+          completedAt: null,
           $or: [
             { leaseOwner: null },
             { leaseExpiresAt: null },

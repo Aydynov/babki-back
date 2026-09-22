@@ -11,15 +11,14 @@ export type PlanOriginCandidate = {
 };
 
 export type PlanOriginResult =
-  | 'updated'
-  | 'already_set'
-  | 'missing'
-  | 'conflict';
+  'updated' | 'already_set' | 'missing' | 'conflict';
 
 export interface LifecycleMigrationStore {
   applyBackfill(step: LifecycleBackfill): Promise<number>;
   findPlanOrigins(): Promise<PlanOriginCandidate[]>;
-  setPlanOriginIfMissing(candidate: PlanOriginCandidate): Promise<PlanOriginResult>;
+  setPlanOriginIfMissing(
+    candidate: PlanOriginCandidate,
+  ): Promise<PlanOriginResult>;
   findLegacyDebtIncomeCandidates(): Promise<Array<{ transactionId: string }>>;
 }
 
@@ -97,8 +96,7 @@ export async function runLifecycleMigration(
         relation: 'plan.expenseOrigin',
         sourceId: candidate.planId,
         targetId: candidate.expenseId,
-        reason:
-          result === 'missing' ? 'missing_target' : 'conflicting_origin',
+        reason: result === 'missing' ? 'missing_target' : 'conflicting_origin',
       });
     }
   }

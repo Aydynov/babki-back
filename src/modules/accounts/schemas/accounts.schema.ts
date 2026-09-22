@@ -29,13 +29,6 @@ export class Account {
 
 export const AccountsSchema = SchemaFactory.createForClass(Account);
 
-AccountsSchema.index(
-  { ownerType: 1, ownerId: 1, type: 1 },
-  {
-    unique: true,
-    partialFilterExpression: { ownerType: 'group', type: 'balance' },
-  },
-);
+AccountsSchema.index({ ownerType: 1, ownerId: 1, type: 1 }, { unique: true });
 
-AccountsSchema.index({ ownerType: 1, ownerId: 1 });
 AccountsSchema.index({ ownerType: 1, ownerId: 1, archivedAt: 1 });

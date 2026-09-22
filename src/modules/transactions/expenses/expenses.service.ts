@@ -118,7 +118,7 @@ export class ExpensesService {
     const [items, total] = await Promise.all([
       this.expenseModel
         .find(filter)
-        .sort({ transactionDate: -1, createdAt: -1 })
+        .sort({ transactionDate: -1, _id: -1 })
         .skip(skip)
         .limit(limit)
         .populate('category')

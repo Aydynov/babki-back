@@ -35,5 +35,10 @@ export class Debt {
 
 export const DebtSchema = SchemaFactory.createForClass(Debt);
 
-DebtSchema.index({ userId: 1, status: 1 });
-DebtSchema.index({ userId: 1, archivedAt: 1 });
+DebtSchema.index({ userId: 1, archivedAt: 1, createdAt: -1 });
+DebtSchema.index({
+  userId: 1,
+  archivedAt: 1,
+  status: 1,
+  createdAt: -1,
+});

@@ -44,7 +44,7 @@ export class AccountsSnapshotsService {
         accountId: foundAccountId,
         date: { $lte: requestedDate },
       })
-      .sort({ date: -1, createdAt: -1 })
+      .sort({ date: -1 })
       .session(session ?? null)
       .lean();
 
@@ -66,7 +66,7 @@ export class AccountsSnapshotsService {
         },
         date: { $lte: requestedDate },
       })
-      .sort({ date: -1, createdAt: -1 })
+      .sort({ date: -1 })
       .lean();
   }
 
@@ -167,7 +167,7 @@ export class AccountsSnapshotsService {
         accountId: new Types.ObjectId(accountId),
         date: { $lte: queryDto.date },
       })
-      .sort({ date: -1, createdAt: -1 })
+      .sort({ date: -1 })
       .session(session ?? null)
       .lean()
       .exec();
@@ -237,7 +237,7 @@ export class AccountsSnapshotsService {
           documents: {
             $topN: {
               n: 20,
-              sortBy: { date: -1, createdAt: -1 },
+              sortBy: { date: -1 },
               output: '$$ROOT',
             },
           },

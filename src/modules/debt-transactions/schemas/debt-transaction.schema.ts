@@ -26,5 +26,9 @@ export class DebtTransaction {
 export const DebtTransactionSchema =
   SchemaFactory.createForClass(DebtTransaction);
 
-DebtTransactionSchema.index({ userId: 1, debtId: 1, transactionDate: -1 });
-DebtTransactionSchema.index({ debtId: 1 });
+DebtTransactionSchema.index({
+  debtId: 1,
+  transactionDate: -1,
+  createdAt: -1,
+});
+DebtTransactionSchema.index({ userId: 1 });

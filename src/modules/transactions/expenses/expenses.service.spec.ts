@@ -23,7 +23,11 @@ describe('ExpensesService', () => {
   };
 
   const mockConnection = { startSession: jest.fn() };
-  const expenseModel = { create: jest.fn(), countDocuments: jest.fn() };
+  const expenseModel = {
+    create: jest.fn(),
+    find: jest.fn(),
+    countDocuments: jest.fn(),
+  };
   const expenseCategoryModel = {
     exists: jest.fn(),
     findOneAndUpdate: jest.fn(),
@@ -104,6 +108,25 @@ describe('ExpensesService', () => {
     expect(expenseModel.create).toHaveBeenCalledWith(expect.any(Array), {
       session: externalSession,
     });
+  });
+
+  it('uses the indexed stable order for expense pagination', async () => {
+    transactionsService.ensureUserExists.mockResolvedValue({
+      userId: new Types.ObjectId(userId),
+      accountId: new Types.ObjectId(accountId),
+    });
+    const exec = jest.fn().mockResolvedValue([]);
+    const lean = jest.fn().mockReturnValue({ exec });
+    const populate = jest.fn().mockReturnValue({ lean });
+    const limit = jest.fn().mockReturnValue({ populate });
+    const skip = jest.fn().mockReturnValue({ limit });
+    const sort = jest.fn().mockReturnValue({ skip });
+    expenseModel.find.mockReturnValue({ sort });
+    expenseModel.countDocuments.mockResolvedValue(0);
+
+    await service.findAll(userId, { page: 1, limit: 20 });
+
+    expect(sort).toHaveBeenCalledWith({ transactionDate: -1, _id: -1 });
   });
 
   it('persists an internal transaction origin', async () => {

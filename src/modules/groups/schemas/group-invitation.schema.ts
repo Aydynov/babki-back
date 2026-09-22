@@ -1,10 +1,7 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument, Schema as MongooseSchema, Types } from 'mongoose';
 
-export const invitationRevocationReasons = [
-  'manual',
-  'group_deleted',
-] as const;
+export const invitationRevocationReasons = ['manual', 'group_deleted'] as const;
 export type InvitationRevocationReason =
   (typeof invitationRevocationReasons)[number];
 

@@ -6,8 +6,6 @@ import { ExpenseLimitSchema } from 'src/modules/expense-limits/schemas/expense-l
 import { GroupInvitationSchema } from 'src/modules/groups/schemas/group-invitation.schema';
 import { GroupMembershipSchema } from 'src/modules/groups/schemas/group-membership.schema';
 import { PlanSchema } from 'src/modules/plans/schemas/plan.schema';
-import { ExpenseSchema } from 'src/modules/transactions/schemas/expense.schema';
-import { SaveSchema } from 'src/modules/transactions/schemas/save.schema';
 import { TransactionSchema } from 'src/modules/transactions/schemas/transaction.schema';
 import { UserDeletionJobSchema } from 'src/modules/users/schemas/user-deletion-job.schema';
 import { UserSchema } from 'src/modules/users/schemas/user.schema';
@@ -75,8 +73,12 @@ describe('lifecycle schema defaults', () => {
         'completed',
       ],
     });
-    expect(UserDeletionJobSchema.path('leaseOwner')?.options.default).toBeNull();
-    expect(UserDeletionJobSchema.path('leaseExpiresAt')?.options.default).toBeNull();
+    expect(
+      UserDeletionJobSchema.path('leaseOwner')?.options.default,
+    ).toBeNull();
+    expect(
+      UserDeletionJobSchema.path('leaseExpiresAt')?.options.default,
+    ).toBeNull();
     expect(UserDeletionJobSchema.path('attempts')?.options.default).toBe(0);
     expect(UserDeletionJobSchema.path('lastError')?.options).toMatchObject({
       default: null,
@@ -86,15 +88,35 @@ describe('lifecycle schema defaults', () => {
     expect(UserDeletionJobSchema.indexes()).toEqual(
       expect.arrayContaining([
         [{ userId: 1 }, expect.objectContaining({ unique: true })],
-        [{ stage: 1, leaseExpiresAt: 1 }, expect.any(Object)],
+        [
+          { requestedAt: 1 },
+          expect.objectContaining({
+            partialFilterExpression: { completedAt: null },
+          }),
+        ],
       ]),
     );
   });
 
   it.each([
-    ['save source account', SaveSchema, { sourceAccountId: 1 }],
-    ['expense category', ExpenseSchema, { category: 1 }],
-    ['limit category', ExpenseLimitSchema, { category: 1 }],
+    ['save source account', TransactionSchema, { sourceAccountId: 1 }],
+    [
+      'expense category',
+      TransactionSchema,
+      { category: 1, deletedAt: 1, transactionDate: -1, _id: -1 },
+    ],
+    [
+      'limit category',
+      ExpenseLimitSchema,
+      {
+        ownerType: 1,
+        ownerId: 1,
+        category: 1,
+        startDate: -1,
+        endDate: -1,
+        createdAt: -1,
+      },
+    ],
     ['plan category', PlanSchema, { categoryId: 1 }],
     ['plan expense', PlanSchema, { expenseId: 1 }],
     [
@@ -102,7 +124,11 @@ describe('lifecycle schema defaults', () => {
       TransactionSchema,
       { 'origin.type': 1, 'origin.id': 1 },
     ],
-    ['debt transaction', DebtTransactionSchema, { debtId: 1 }],
+    [
+      'debt transaction',
+      DebtTransactionSchema,
+      { debtId: 1, transactionDate: -1, createdAt: -1 },
+    ],
     [
       'account lifecycle',
       AccountsSchema,
@@ -111,26 +137,37 @@ describe('lifecycle schema defaults', () => {
     [
       'transaction lifecycle',
       TransactionSchema,
-      { ownerType: 1, ownerId: 1, deletedAt: 1 },
+      {
+        ownerType: 1,
+        ownerId: 1,
+        deletedAt: 1,
+        transactionDate: -1,
+        _id: -1,
+      },
     ],
     [
       'category lifecycle',
       ExpenseCategorySchema,
-      { ownerType: 1, ownerId: 1, isArchived: 1 },
+      {
+        ownerType: 1,
+        ownerId: 1,
+        isArchived: 1,
+        createdAt: -1,
+      },
     ],
-    ['plan lifecycle', PlanSchema, { userId: 1, archivedAt: 1 }],
-    ['debt lifecycle', DebtSchema, { userId: 1, archivedAt: 1 }],
+    [
+      'plan lifecycle',
+      PlanSchema,
+      { userId: 1, archivedAt: 1, targetDate: 1, createdAt: -1 },
+    ],
+    ['debt lifecycle', DebtSchema, { userId: 1, archivedAt: 1, createdAt: -1 }],
     ['user lifecycle', UserSchema, { status: 1, deletedAt: 1 }],
     [
       'membership cleanup',
       GroupMembershipSchema,
-      { groupId: 1, status: 1 },
+      { groupId: 1, status: 1, joinedAt: 1, _id: 1 },
     ],
-    [
-      'invitation cleanup',
-      GroupInvitationSchema,
-      { groupId: 1, status: 1 },
-    ],
+    ['invitation cleanup', GroupInvitationSchema, { groupId: 1, status: 1 }],
   ])('indexes %s lookups', (_name, schema, fields) => {
     expect(schema.indexes()).toEqual(
       expect.arrayContaining([[fields, expect.any(Object)]]),

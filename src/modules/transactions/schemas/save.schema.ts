@@ -10,6 +10,5 @@ export class Save extends Transaction {
 }
 
 export const SaveSchema = SchemaFactory.createForClass(Save);
-SaveSchema.index({ sourceAccountId: 1 });
 
 export type SaveDocument = HydratedDocument<Save>;

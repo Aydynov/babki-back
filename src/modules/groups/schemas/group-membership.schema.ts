@@ -32,4 +32,4 @@ export const GroupMembershipSchema =
   SchemaFactory.createForClass(GroupMembership);
 GroupMembershipSchema.index({ groupId: 1, userId: 1 }, { unique: true });
 GroupMembershipSchema.index({ userId: 1, status: 1, groupId: 1 });
-GroupMembershipSchema.index({ groupId: 1, status: 1 });
+GroupMembershipSchema.index({ groupId: 1, status: 1, joinedAt: 1, _id: 1 });

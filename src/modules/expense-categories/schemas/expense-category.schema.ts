@@ -38,5 +38,9 @@ ExpenseCategorySchema.index(
   { ownerType: 1, ownerId: 1, name: 1 },
   { unique: true },
 );
-ExpenseCategorySchema.index({ userId: 1 });
-ExpenseCategorySchema.index({ ownerType: 1, ownerId: 1, isArchived: 1 });
+ExpenseCategorySchema.index({
+  ownerType: 1,
+  ownerId: 1,
+  isArchived: 1,
+  createdAt: -1,
+});

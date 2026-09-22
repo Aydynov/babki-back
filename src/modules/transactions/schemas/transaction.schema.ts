@@ -73,12 +73,29 @@ export const TransactionSchema = SchemaFactory.createForClass(Transaction);
 TransactionSchema.index({
   userId: 1,
   snapshotId: 1,
+  deletedAt: 1,
   transactionDate: -1,
+  _id: -1,
 });
 
 TransactionSchema.index({
   ownerType: 1,
   ownerId: 1,
+  deletedAt: 1,
+  transactionDate: -1,
+  _id: -1,
+});
+TransactionSchema.index({
+  ownerType: 1,
+  ownerId: 1,
+  deletedAt: 1,
+  type: 1,
+  transactionDate: -1,
+  _id: -1,
+});
+TransactionSchema.index({
+  accountId: 1,
+  deletedAt: 1,
   transactionDate: -1,
   _id: -1,
 });
@@ -86,7 +103,15 @@ TransactionSchema.index({
   ownerType: 1,
   ownerId: 1,
   participantId: 1,
+  deletedAt: 1,
   transactionDate: -1,
+  _id: -1,
 });
+TransactionSchema.index({
+  category: 1,
+  deletedAt: 1,
+  transactionDate: -1,
+  _id: -1,
+});
+TransactionSchema.index({ sourceAccountId: 1 });
 TransactionSchema.index({ 'origin.type': 1, 'origin.id': 1 });
-TransactionSchema.index({ ownerType: 1, ownerId: 1, deletedAt: 1 });

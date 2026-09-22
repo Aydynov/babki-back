@@ -38,8 +38,15 @@ export const ExpenseLimitSchema = SchemaFactory.createForClass(ExpenseLimit);
 ExpenseLimitSchema.index({
   ownerType: 1,
   ownerId: 1,
-  category: 1,
-  startDate: 1,
-  endDate: 1,
+  startDate: -1,
+  endDate: -1,
+  createdAt: -1,
 });
-ExpenseLimitSchema.index({ category: 1 });
+ExpenseLimitSchema.index({
+  ownerType: 1,
+  ownerId: 1,
+  category: 1,
+  startDate: -1,
+  endDate: -1,
+  createdAt: -1,
+});

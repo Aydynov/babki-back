@@ -49,7 +49,7 @@ export class TransactionsService {
     const [items, total] = await Promise.all([
       model
         .find(filter)
-        .sort({ transactionDate: -1, createdAt: -1 })
+        .sort({ transactionDate: -1, _id: -1 })
         .skip(skip)
         .limit(limit)
         .lean()

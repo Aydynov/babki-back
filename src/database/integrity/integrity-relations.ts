@@ -101,8 +101,12 @@ function groupRelations(): IntegrityRelation[] {
 function ownerRelations(): IntegrityRelation[] {
   return ['Account', 'ExpenseCategory', 'ExpenseLimit', 'Transaction'].flatMap(
     (sourceModel) => {
-      const prefix = sourceModel === 'ExpenseCategory' ? 'category' :
-        sourceModel === 'ExpenseLimit' ? 'limit' : sourceModel.toLowerCase();
+      const prefix =
+        sourceModel === 'ExpenseCategory'
+          ? 'category'
+          : sourceModel === 'ExpenseLimit'
+            ? 'limit'
+            : sourceModel.toLowerCase();
       return [
         {
           id: `${prefix}.owner.user`,

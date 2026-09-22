@@ -16,6 +16,8 @@ describe('personal transactions boundary', () => {
   };
   const accountModel = { updateOne: jest.fn() };
   const transactionModel = {
+    find: jest.fn(),
+    countDocuments: jest.fn(),
     findOne: jest.fn(),
     findOneAndUpdate: jest.fn(),
     exists: jest.fn(),
@@ -39,6 +41,24 @@ describe('personal transactions boundary', () => {
       ownerId: new Types.ObjectId(userId),
       deletedAt: null,
     });
+  });
+  it('uses the indexed stable order for transaction pagination', async () => {
+    jest.spyOn(service, 'ensureUserExists').mockResolvedValue({
+      userId: new Types.ObjectId(userId),
+      ownerType: 'user',
+      ownerId: new Types.ObjectId(userId),
+      accountId: new Types.ObjectId(first),
+    });
+    const exec = jest.fn().mockResolvedValue([]);
+    const limit = jest.fn().mockReturnValue({ lean: () => ({ exec }) });
+    const skip = jest.fn().mockReturnValue({ limit });
+    const sort = jest.fn().mockReturnValue({ skip });
+    transactionModel.find.mockReturnValue({ sort });
+    transactionModel.countDocuments.mockResolvedValue(0);
+
+    await service.findAll(userId, { page: 1, limit: 20 });
+
+    expect(sort).toHaveBeenCalledWith({ transactionDate: -1, _id: -1 });
   });
   it('locks both save accounts once in a stable order', async () => {
     await service.lockAccounts(

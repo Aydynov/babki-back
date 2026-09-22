@@ -52,4 +52,7 @@ export const UserDeletionJobSchema =
   SchemaFactory.createForClass(UserDeletionJob);
 
 UserDeletionJobSchema.index({ userId: 1 }, { unique: true });
-UserDeletionJobSchema.index({ stage: 1, leaseExpiresAt: 1 });
+UserDeletionJobSchema.index(
+  { requestedAt: 1 },
+  { partialFilterExpression: { completedAt: null } },
+);

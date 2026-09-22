@@ -6,9 +6,7 @@ import {
   PlanOriginResult,
 } from './lifecycle-migration';
 
-export class MongooseLifecycleMigrationStore
-  implements LifecycleMigrationStore
-{
+export class MongooseLifecycleMigrationStore implements LifecycleMigrationStore {
   constructor(private readonly connection: Connection) {}
 
   async applyBackfill(step: LifecycleBackfill): Promise<number> {
@@ -79,7 +77,8 @@ export class MongooseLifecycleMigrationStore
 
   private requireModel(name: string) {
     const model = this.connection.models[name];
-    if (!model) throw new Error(`Lifecycle migration model is not registered: ${name}`);
+    if (!model)
+      throw new Error(`Lifecycle migration model is not registered: ${name}`);
     return model;
   }
 }

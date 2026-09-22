@@ -44,8 +44,18 @@ export class Plan {
 
 export const PlanSchema = SchemaFactory.createForClass(Plan);
 
-PlanSchema.index({ userId: 1, status: 1 });
-PlanSchema.index({ userId: 1, targetDate: 1 });
+PlanSchema.index({
+  userId: 1,
+  archivedAt: 1,
+  targetDate: 1,
+  createdAt: -1,
+});
+PlanSchema.index({
+  userId: 1,
+  archivedAt: 1,
+  status: 1,
+  targetDate: 1,
+  createdAt: -1,
+});
 PlanSchema.index({ categoryId: 1 });
 PlanSchema.index({ expenseId: 1 });
-PlanSchema.index({ userId: 1, archivedAt: 1 });
