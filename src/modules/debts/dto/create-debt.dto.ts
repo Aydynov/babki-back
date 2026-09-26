@@ -9,19 +9,23 @@ import {
   Min,
 } from 'class-validator';
 import { debtStatuses } from '../schemas/debt.schema';
+import { SUPPORTED_CURRENCY_CODES } from 'src/common/money/money';
 
 export class CreateDebtDto {
+  @IsIn(SUPPORTED_CURRENCY_CODES)
+  currency: string;
+
   @IsString()
   @MaxLength(150)
   debtor: string;
 
   @Type(() => Number)
-  @IsNumber({ maxDecimalPlaces: 2 })
+  @IsNumber()
   @Min(0.01)
   principalAmount: number;
 
   @Type(() => Number)
-  @IsNumber({ maxDecimalPlaces: 2 })
+  @IsNumber()
   @Min(0)
   remainingAmount: number;
 

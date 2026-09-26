@@ -47,7 +47,12 @@ export async function runSeeders(app: INestApplicationContext) {
   const { userId, users, password } = await seedUsers(app);
   console.log(`👤 Users seeded  (5 total, password: ${password})`);
 
-  const { balanceAccountId, savingAccountId } = await seedAccounts(app, userId);
+  const {
+    balanceAccountId,
+    savingAccountId,
+    usdBalanceAccountId,
+    usdSavingAccountId,
+  } = await seedAccounts(app, userId);
   console.log(
     `🏦 Accounts seeded  (balance: ${balanceAccountId}, saving: ${savingAccountId})`,
   );
@@ -66,16 +71,25 @@ export async function runSeeders(app: INestApplicationContext) {
     `🏷️  Categories seeded  (${Object.keys(categories).length} total)`,
   );
 
-  await seedTransactions(app, userId, balanceAccountId, categories, anchorDate);
+  await seedTransactions(
+    app,
+    userId,
+    balanceAccountId,
+    savingAccountId,
+    usdBalanceAccountId,
+    usdSavingAccountId,
+    categories,
+    anchorDate,
+  );
   console.log('💸 Transactions seeded  (116 active, 1 soft-deleted)');
 
   await seedLimits(app, userId, categories, anchorDate);
   console.log('📊 Limits seeded  (2 total)');
 
-  await seedDebts(app, userId, anchorDate);
+  await seedDebts(app, userId, balanceAccountId, anchorDate);
   console.log('💳 Debts seeded  (active with history, archived, deletable)');
 
-  await seedPlans(app, userId, categories, anchorDate);
+  await seedPlans(app, userId, balanceAccountId, categories, anchorDate);
   console.log('📋 Plans seeded  (7 total)');
 
   const groupFixtures = await seedGroups(app, users, anchorDate);

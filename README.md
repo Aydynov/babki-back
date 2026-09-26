@@ -10,7 +10,7 @@ The application currently contains these functional areas:
 - `users`: profile read and update for the authenticated user
 - `accounts`: base schema with two discriminators — `balance` and `saving`
 - `accounts-snapshots`: one snapshot per account per month, tracks account balance over time
-- `transactions`: base schema with three discriminators — `expense`, `income`, `save`
+- `transactions`: personal `expense`, `income`, and atomic same-/cross-currency `transfer` operations
 - `expense-categories`: shared category list, user-scoped
 - `expense-limits`: per-category spending limits enriched with a `rest` field (limit total minus actual spend)
 - `debts`: debt tracking with principal and remaining amounts
@@ -44,7 +44,7 @@ Every endpoint requires a valid JWT Bearer token except registration and the two
 
 **Flow:**
 
-1. `POST /auth/register` — create an account with email, password, first/last name, and currency
+1. `POST /auth/register` — create an account with email, password, first/last name, and `currency` (stored as `defaultCurrency`)
 2. `POST /auth/login` — authenticate and receive `{ accessToken, user }` when 2FA is disabled
 3. When 2FA is enabled, the password step instead returns `{ requiresTwoFactor, challengeToken, expiresAt }`; complete it at `POST /auth/login/two-factor` with a TOTP or recovery code
 4. Include the resulting token on subsequent requests: `Authorization: Bearer <accessToken>`
@@ -153,7 +153,9 @@ NODE_ENV=development npm run seed
 Populates the database with five test users (password `Test1234!`), personal
 and group budgets, rolling transaction history, limits, debts and plans. The
 fixtures also include deletable, archived, soft-deleted and deletion-restricted
-records for entity lifecycle testing. Use `delete-me@test.com` for account
+records for entity lifecycle testing. The main user has RUB/USD balance and
+saving accounts, currency-specific operations, and same-/cross-currency
+transfers. Use `delete-me@test.com` for account
 deletion tests; it owns no active group. The command prints the important
 fixture identifiers and the pending group invitation token.
 
@@ -235,10 +237,10 @@ PATCH /users/me
 ### Accounts
 
 ```
-POST   /balances
-GET    /balances
-POST   /savings
-GET    /savings
+POST   /accounts
+GET    /accounts
+GET    /accounts/:accountId
+PATCH  /accounts/:accountId
 DELETE /accounts/:accountId
 POST   /accounts/:accountId/archive
 GET    /accounts/:accountId/snapshots
@@ -257,15 +259,21 @@ GET   /incomes
 GET   /incomes/:incomeId
 PATCH /incomes/:incomeId
 
-POST  /saves
-GET   /saves
-GET   /saves/:saveId
-PATCH /saves/:saveId
+POST   /transfers
+GET    /transfers
+GET    /transfers/:transferId
+PATCH  /transfers/:transferId
+DELETE /transfers/:transferId
 
 GET    /transactions
 GET    /transactions/:transactionId
 DELETE /transactions/:transactionId
 ```
+
+Personal income and expense creation requires `accountId`; the selected active
+account determines the operation currency. Reports return independent currency
+buckets and never convert or add unlike currencies. See
+[the multicurrency API notes](docs/multicurrency-api.md).
 
 ### Expense categories and limits
 

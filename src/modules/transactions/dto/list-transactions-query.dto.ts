@@ -1,5 +1,6 @@
 import { IsDateString, IsIn, IsMongoId, IsOptional } from 'class-validator';
 import { PaginationQueryDto } from 'src/common/dto/pagination-query.dto';
+import { SUPPORTED_CURRENCY_CODES } from 'src/common/money/money';
 import {
   type TransactionType,
   transactionTypes,
@@ -13,6 +14,10 @@ export class ListTransactionsQueryDto extends PaginationQueryDto {
   @IsOptional()
   @IsMongoId()
   accountId?: string;
+
+  @IsOptional()
+  @IsIn(SUPPORTED_CURRENCY_CODES)
+  currency?: string;
 
   @IsOptional()
   @IsDateString()

@@ -1,5 +1,6 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { HydratedDocument } from 'mongoose';
+import { HydratedDocument, Schema as MongooseSchema, Types } from 'mongoose';
+import { SUPPORTED_CURRENCY_CODES } from 'src/common/money/money';
 
 export const userStatuses = ['active', 'deletion_pending', 'deleted'] as const;
 export type UserStatus = (typeof userStatuses)[number];
@@ -29,6 +30,16 @@ export class User {
 
   @Prop({ trim: true })
   description?: string;
+
+  @Prop({ required: true, type: String, enum: SUPPORTED_CURRENCY_CODES })
+  defaultCurrency: string;
+
+  @Prop({
+    type: MongooseSchema.Types.ObjectId,
+    ref: 'Account',
+    default: null,
+  })
+  defaultAccountId: Types.ObjectId | null;
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);

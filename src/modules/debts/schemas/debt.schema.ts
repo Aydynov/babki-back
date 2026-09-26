@@ -20,6 +20,9 @@ export class Debt {
   @Prop({ required: true, min: 0 })
   remainingAmount: number;
 
+  @Prop({ required: true, immutable: true })
+  currency: string;
+
   @Prop({ trim: true })
   description?: string;
 
@@ -40,5 +43,6 @@ DebtSchema.index({
   userId: 1,
   archivedAt: 1,
   status: 1,
+  currency: 1,
   createdAt: -1,
 });

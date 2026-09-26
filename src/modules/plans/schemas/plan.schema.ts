@@ -22,6 +22,9 @@ export class Plan {
   @Prop({ required: true, min: 0.01 })
   amount: number;
 
+  @Prop({ required: true, immutable: true })
+  currency: string;
+
   @Prop({
     required: true,
     type: MongooseSchema.Types.ObjectId,
@@ -54,6 +57,7 @@ PlanSchema.index({
   userId: 1,
   archivedAt: 1,
   status: 1,
+  currency: 1,
   targetDate: 1,
   createdAt: -1,
 });

@@ -11,7 +11,7 @@ import { ExpenseCategory } from '../expense-categories/schemas/expense-category.
 import { BudgetAccessService, groupBudget } from './budget-access.service';
 import { GroupWalletService, money } from './group-wallet.service';
 import { GroupReportsQueryDto } from './dto/group-finances.dto';
-import { PeriodReport } from '../reports/interfaces/period-report.interface';
+import { SingleCurrencyPeriodReport } from '../reports/interfaces/period-report.interface';
 @Injectable()
 export class GroupReportsService {
   constructor(
@@ -28,7 +28,7 @@ export class GroupReportsService {
     actor: string,
     query: GroupReportsQueryDto,
     yearly = false,
-  ): Promise<PeriodReport[]> {
+  ): Promise<SingleCurrencyPeriodReport[]> {
     const budget = await this.access.resolve(actor, groupId);
     const account = await this.accounts.findOne(budget);
     const now = new Date();
@@ -50,7 +50,7 @@ export class GroupReportsService {
     const categories = await this.categories
       .find({ ...budget, ...(ids ? { _id: { $in: ids } } : {}) })
       .lean();
-    const rows: PeriodReport[] = [];
+    const rows: SingleCurrencyPeriodReport[] = [];
     let start = new Date(
       Date.UTC(from.getUTCFullYear(), yearly ? 0 : from.getUTCMonth(), 1),
     );

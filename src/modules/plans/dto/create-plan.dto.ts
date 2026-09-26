@@ -4,11 +4,16 @@ import {
   IsMongoId,
   IsNumber,
   IsString,
+  IsIn,
   MaxLength,
   Min,
 } from 'class-validator';
+import { SUPPORTED_CURRENCY_CODES } from 'src/common/money/money';
 
 export class CreatePlanDto {
+  @IsIn(SUPPORTED_CURRENCY_CODES)
+  currency: string;
+
   @IsString()
   @MaxLength(500)
   description: string;
@@ -17,7 +22,7 @@ export class CreatePlanDto {
   targetDate: string;
 
   @Type(() => Number)
-  @IsNumber({ maxDecimalPlaces: 2 })
+  @IsNumber()
   @Min(0.01)
   amount: number;
 

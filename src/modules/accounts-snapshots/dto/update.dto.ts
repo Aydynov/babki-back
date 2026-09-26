@@ -3,6 +3,6 @@ import { IsNumber } from 'class-validator';
 
 export class UpdateAccountSnapshotDto {
   @Type(() => Number)
-  @IsNumber({ maxDecimalPlaces: 2 })
+  @IsNumber()
   amount: number;
 }

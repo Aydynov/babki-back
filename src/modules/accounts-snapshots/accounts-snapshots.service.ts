@@ -1,4 +1,5 @@
 import { personalBudget } from 'src/common/utils/personal-budget.util';
+import { getCurrencyMinorUnits } from 'src/common/money/money';
 import {
   ConflictException,
   Injectable,
@@ -178,18 +179,28 @@ export class AccountsSnapshotsService {
       );
     }
 
-    const foundAccountId = await this.ensureAccountExists(
-      userId,
-      accountId,
-      session,
-    );
+    const account = await this.accountsModel
+      .findOne({ _id: accountId, ...personalBudget(userId) })
+      .session(session ?? null)
+      .lean()
+      .exec();
+    if (!account)
+      throw new NotFoundException(
+        `Account ${accountId} for user ${userId} not found.`,
+      );
+    const foundAccountId = account._id;
+    const precision = account.currency
+      ? getCurrencyMinorUnits(account.currency)
+      : 2;
 
     await this.snapshotsModel.updateMany(
       { accountId: foundAccountId, date: { $gte: entity.date } },
       [
         {
           $set: {
-            amount: { $round: [{ $add: ['$amount', updateDto.amount] }, 2] },
+            amount: {
+              $round: [{ $add: ['$amount', updateDto.amount] }, precision],
+            },
           },
         },
       ],

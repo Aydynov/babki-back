@@ -2,14 +2,18 @@ import {
   personalBudget,
   personalResponse,
 } from 'src/common/utils/personal-budget.util';
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectConnection, InjectModel } from '@nestjs/mongoose';
 import { ClientSession, Connection, Model, Types } from 'mongoose';
 import { getPagination } from 'src/common/utils/pagination.util';
+import { normalizeMoney } from 'src/common/money/money';
 import {
   Account,
   AccountDocument,
-  AccountType,
 } from 'src/modules/accounts/schemas/accounts.schema';
 import { AccountsSnapshotsService } from '../../accounts-snapshots/accounts-snapshots.service';
 import { User, UserDocument } from '../../users/schemas/user.schema';
@@ -39,10 +43,7 @@ export class TransactionsService {
     query: ListTransactionsQueryDto,
     model: Model<Transaction> = this.transactionModel,
   ) {
-    const foundIds = await this.ensureUserExists(
-      userId,
-      query.transactionType === 'save' ? 'saving' : undefined,
-    );
+    const foundIds = await this.ensureUserExists(userId);
     const { page, limit, skip } = getPagination(query);
     const filter = this.buildFilter(foundIds.userId, query);
 
@@ -90,29 +91,36 @@ export class TransactionsService {
     query: ListTransactionsQueryDto,
     model: Model<Transaction> = this.transactionModel,
   ) {
-    const foundIds = await this.ensureUserExists(
-      userId,
-      query.transactionType === 'save' ? 'saving' : undefined,
-    );
+    const foundIds = await this.ensureUserExists(userId);
     const filter = this.buildFilter(foundIds.userId, query);
 
     const aggregate = await model.aggregate<{
-      _id: null;
+      _id: string;
       totalRevenue: number;
     }>([
       { $match: filter },
       {
         $group: {
-          _id: null,
+          _id: '$currency',
           totalRevenue: { $sum: '$amount' },
         },
       },
     ]);
 
+    const currencies = aggregate
+      .filter((row) => typeof row._id === 'string')
+      .map((row) => ({
+        currency: row._id,
+        totalRevenue: normalizeMoney(row.totalRevenue, row._id),
+      }))
+      .sort((left, right) => left.currency.localeCompare(right.currency));
+
     return {
       fromDate: query.fromDate,
       toDate: query.toDate,
-      totalRevenue: aggregate[0]?.totalRevenue ?? 0,
+      totalRevenue:
+        currencies.length > 1 ? null : (currencies[0]?.totalRevenue ?? 0),
+      currencies,
     };
   }
 
@@ -126,13 +134,13 @@ export class TransactionsService {
           this.transactionModel,
           session,
         );
-        const sourceId =
-          transaction.type === 'save' && 'sourceAccountId' in transaction
-            ? String(transaction.sourceAccountId)
-            : undefined;
+        if (transaction.type === 'transfer')
+          throw new BadRequestException(
+            'Use the transfer endpoint to delete a transfer.',
+          );
         await this.lockAccounts(
           userId,
-          [transaction.accountId.toString(), ...(sourceId ? [sourceId] : [])],
+          [transaction.accountId.toString()],
           session,
         );
         const deleted = await this.transactionModel.findOneAndUpdate(
@@ -161,14 +169,6 @@ export class TransactionsService {
           },
           session,
         );
-        if (sourceId)
-          await this.snapshotService.recalculateSnapshotsFromDate(
-            userId,
-            sourceId,
-            { date: transaction.transactionDate.toISOString() },
-            { amount: transaction.amount },
-            session,
-          );
         return null;
       });
     } finally {
@@ -203,7 +203,8 @@ export class TransactionsService {
         ...personalBudget(userId),
         $or: [
           { accountId: accountObjectId },
-          { sourceAccountId: accountObjectId },
+          { 'source.accountId': accountObjectId },
+          { 'destination.accountId': accountObjectId },
         ],
       })
       .session(session);
@@ -215,7 +216,7 @@ export class TransactionsService {
     query: Pick<
       ListTransactionsQueryDto,
       'snapshotId' | 'accountId' | 'fromDate' | 'toDate' | 'transactionType'
-    > & { categoryId?: string },
+    > & { categoryId?: string; currency?: string },
   ) {
     const filter: {
       userId: Types.ObjectId;
@@ -229,19 +230,50 @@ export class TransactionsService {
       category?: Types.ObjectId;
       snapshotId?: Types.ObjectId;
       accountId?: Types.ObjectId;
+      $or?: Record<string, Types.ObjectId>[];
+      $and?: Array<{ $or: Record<string, Types.ObjectId>[] }>;
       deletedAt: null;
+      currency?: string;
     } = { ...personalBudget(userId), ...activeTransactionFilter };
 
     if (query.categoryId) {
       filter.category = new Types.ObjectId(query.categoryId);
     }
+    if (query.currency) filter.currency = query.currency;
 
     if (query.snapshotId) {
-      filter.snapshotId = new Types.ObjectId(query.snapshotId);
+      const snapshotId = new Types.ObjectId(query.snapshotId);
+      if (
+        query.transactionType === 'income' ||
+        query.transactionType === 'expense'
+      )
+        filter.snapshotId = snapshotId;
+      else
+        filter.$or = [
+          { snapshotId },
+          { 'source.snapshotId': snapshotId },
+          { 'destination.snapshotId': snapshotId },
+        ];
     }
 
     if (query.accountId) {
-      filter.accountId = new Types.ObjectId(query.accountId);
+      const accountId = new Types.ObjectId(query.accountId);
+      if (
+        query.transactionType === 'income' ||
+        query.transactionType === 'expense'
+      )
+        filter.accountId = accountId;
+      else {
+        const accountFilters: Record<string, Types.ObjectId>[] = [
+          { accountId },
+          { 'source.accountId': accountId },
+          { 'destination.accountId': accountId },
+        ];
+        if (filter.$or) {
+          filter.$and = [{ $or: filter.$or }, { $or: accountFilters }];
+          delete filter.$or;
+        } else filter.$or = accountFilters;
+      }
     }
 
     if (query.transactionType) {
@@ -267,9 +299,9 @@ export class TransactionsService {
 
   async ensureUserExists(
     userId: string,
-    accountType: AccountType = 'balance',
     session?: ClientSession,
-  ) {
+  ): Promise<ReturnType<typeof personalBudget>>;
+  async ensureUserExists(userId: string, session?: ClientSession) {
     const foundUser = await this.userModel
       .exists({ _id: userId })
       .session(session ?? null);
@@ -278,20 +310,28 @@ export class TransactionsService {
       throw new NotFoundException(`User ${userId} not found.`);
     }
 
+    return personalBudget(foundUser._id);
+  }
+
+  async resolveActiveAccount(
+    userId: string,
+    accountId: string,
+    session: ClientSession,
+  ) {
+    const foundIds = await this.ensureUserExists(userId, session);
     const account = await this.accountModel
-      .exists({
-        ...personalBudget(foundUser._id),
-        type: accountType,
+      .findOne({
+        _id: accountId,
+        ...personalBudget(foundIds.userId),
+        archivedAt: null,
       })
-      .session(session ?? null);
-
-    if (!account) {
-      throw new NotFoundException(`Account for user ${userId} not found.`);
-    }
-
-    return {
-      ...personalBudget(foundUser._id),
-      accountId: account._id,
-    };
+      .session(session)
+      .lean()
+      .exec();
+    if (!account)
+      throw new NotFoundException(`Account ${accountId} not found.`);
+    if (!account.currency)
+      throw new BadRequestException('Personal account currency is missing.');
+    return { ...foundIds, account };
   }
 }

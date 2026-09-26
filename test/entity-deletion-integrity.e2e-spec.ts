@@ -31,7 +31,7 @@ describe('Entity deletion rollout integrity (real MongoDB replica set)', () => {
     expect(audit).toMatchObject({
       ok: true,
       violationCount: 0,
-      checkedRelations: 31,
+      checkedRelations: 35,
       violations: [],
     });
   });

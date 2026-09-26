@@ -86,7 +86,14 @@ describe('User deletion (real MongoDB replica set)', () => {
     const user = await register();
     const personal = asUser(user.token);
     const account = idOf(
-      await personal.post('/balances', { amount: 100 }).expect(201),
+      await personal
+        .post('/accounts', {
+          name: 'Personal balance',
+          type: 'balance',
+          currency: 'USD',
+          amount: 100,
+        })
+        .expect(201),
     );
     const category = idOf(
       await personal
@@ -95,6 +102,7 @@ describe('User deletion (real MongoDB replica set)', () => {
     );
     await personal
       .post('/expenses', {
+        accountId: account,
         categoryId: category,
         amount: 10,
         transactionDate: '2026-09-21',

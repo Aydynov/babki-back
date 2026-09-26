@@ -20,6 +20,7 @@ describe('PlansService', () => {
   const planId = '507f1f77bcf86cd799439012';
   const categoryId = '507f1f77bcf86cd799439013';
   const expenseId = '507f1f77bcf86cd799439014';
+  const accountId = '507f1f77bcf86cd799439015';
 
   const mockSession = {
     withTransaction: jest.fn().mockImplementation(async (fn) => fn()),
@@ -74,6 +75,7 @@ describe('PlansService', () => {
 
   describe('create', () => {
     const dto: CreatePlanDto = {
+      currency: 'RUB',
       description: 'Buy a laptop',
       targetDate: '2026-08-01',
       amount: 80000,
@@ -202,6 +204,7 @@ describe('PlansService', () => {
       const currentPlan = {
         _id: new Types.ObjectId(planId),
         status: 'active',
+        currency: 'RUB',
         amount: 80000,
       };
       const exec = jest.fn().mockResolvedValue(currentPlan);
@@ -305,6 +308,7 @@ describe('PlansService', () => {
       amount: 80000,
       categoryId: new Types.ObjectId(categoryId),
       status: 'active' as const,
+      currency: 'RUB',
     };
 
     function mockFindOne(plan: typeof activePlan | null) {
@@ -323,7 +327,10 @@ describe('PlansService', () => {
       userModel.exists.mockResolvedValue({ _id: new Types.ObjectId(userId) });
       mockFindOne(activePlan);
 
-      const createdExpense = { _id: new Types.ObjectId(expenseId) };
+      const createdExpense = {
+        _id: new Types.ObjectId(expenseId),
+        currency: 'RUB',
+      };
       expensesService.create.mockResolvedValue(createdExpense);
 
       const closedPlan = {
@@ -334,11 +341,12 @@ describe('PlansService', () => {
       };
       mockFindOneAndUpdate(closedPlan);
 
-      const result = await service.close(userId, planId, {});
+      const result = await service.close(userId, planId, { accountId });
 
       expect(expensesService.create).toHaveBeenCalledWith(
         userId,
         {
+          accountId,
           categoryId: categoryId,
           amount: activePlan.amount,
           transactionDate: expect.any(String),
@@ -367,13 +375,17 @@ describe('PlansService', () => {
       userModel.exists.mockResolvedValue({ _id: new Types.ObjectId(userId) });
       mockFindOne(activePlan);
 
-      const createdExpense = { _id: new Types.ObjectId(expenseId) };
+      const createdExpense = {
+        _id: new Types.ObjectId(expenseId),
+        currency: 'RUB',
+      };
       expensesService.create.mockResolvedValue(createdExpense);
 
       const closedPlan = { ...activePlan, status: 'closed' };
       mockFindOneAndUpdate(closedPlan);
 
       const dto: ClosePlanDto = {
+        accountId,
         amount: 75000,
         description: 'Refurbished laptop',
         closingDate: '2026-07-15',
@@ -383,6 +395,7 @@ describe('PlansService', () => {
       expect(expensesService.create).toHaveBeenCalledWith(
         userId,
         {
+          accountId,
           categoryId: categoryId,
           amount: 75000,
           transactionDate: '2026-07-15',
@@ -395,11 +408,14 @@ describe('PlansService', () => {
 
     it('throws BadRequestException when plan is already closed', async () => {
       userModel.exists.mockResolvedValue({ _id: new Types.ObjectId(userId) });
-      mockFindOne({ ...activePlan, status: 'closed' });
+      mockFindOne({
+        ...activePlan,
+        status: 'closed',
+      } as unknown as typeof activePlan);
 
-      await expect(service.close(userId, planId, {})).rejects.toBeInstanceOf(
-        BadRequestException,
-      );
+      await expect(
+        service.close(userId, planId, { accountId }),
+      ).rejects.toBeInstanceOf(BadRequestException);
       expect(expensesService.create).not.toHaveBeenCalled();
     });
 
@@ -407,9 +423,9 @@ describe('PlansService', () => {
       userModel.exists.mockResolvedValue({ _id: new Types.ObjectId(userId) });
       mockFindOne(null);
 
-      await expect(service.close(userId, planId, {})).rejects.toBeInstanceOf(
-        NotFoundException,
-      );
+      await expect(
+        service.close(userId, planId, { accountId }),
+      ).rejects.toBeInstanceOf(NotFoundException);
       expect(expensesService.create).not.toHaveBeenCalled();
     });
 
@@ -417,15 +433,18 @@ describe('PlansService', () => {
       userModel.exists.mockResolvedValue({ _id: new Types.ObjectId(userId) });
       mockFindOne(activePlan);
 
-      const createdExpense = { _id: new Types.ObjectId(expenseId) };
+      const createdExpense = {
+        _id: new Types.ObjectId(expenseId),
+        currency: 'RUB',
+      };
       expensesService.create.mockResolvedValue(createdExpense);
 
       // Simulate concurrent close: findOneAndUpdate returns null because status no longer 'active'
       mockFindOneAndUpdate(null);
 
-      await expect(service.close(userId, planId, {})).rejects.toBeInstanceOf(
-        BadRequestException,
-      );
+      await expect(
+        service.close(userId, planId, { accountId }),
+      ).rejects.toBeInstanceOf(BadRequestException);
     });
   });
 });

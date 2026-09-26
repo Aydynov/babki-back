@@ -13,6 +13,7 @@ export async function seedLimits(
   const { startDate, endDate } = getSeedMonthRange(0, anchorDate);
 
   await limitsService.create(userId, {
+    currency: 'RUB',
     categoryId: categories['Food & Dining'],
     total: 65000,
     startDate,
@@ -20,8 +21,17 @@ export async function seedLimits(
   });
 
   await limitsService.create(userId, {
+    currency: 'RUB',
     categoryId: categories['Entertainment'],
     total: 25000,
+    startDate,
+    endDate,
+  });
+
+  await limitsService.create(userId, {
+    currency: 'USD',
+    categoryId: categories['Entertainment'],
+    total: 300,
     startDate,
     endDate,
   });

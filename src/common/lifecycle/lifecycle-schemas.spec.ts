@@ -7,6 +7,7 @@ import { GroupInvitationSchema } from 'src/modules/groups/schemas/group-invitati
 import { GroupMembershipSchema } from 'src/modules/groups/schemas/group-membership.schema';
 import { PlanSchema } from 'src/modules/plans/schemas/plan.schema';
 import { TransactionSchema } from 'src/modules/transactions/schemas/transaction.schema';
+import { TransferSchema } from 'src/modules/transactions/schemas/transfer.schema';
 import { UserDeletionJobSchema } from 'src/modules/users/schemas/user-deletion-job.schema';
 import { UserSchema } from 'src/modules/users/schemas/user.schema';
 
@@ -16,7 +17,12 @@ describe('lifecycle schema defaults', () => {
     ['plan', PlanSchema],
     ['debt', DebtSchema],
   ])('%s is active by default', (_name, schema) => {
-    expect(schema.path('archivedAt')?.options.default).toBeNull();
+    const path = (
+      schema as unknown as {
+        path(name: string): { options: { default: unknown } };
+      }
+    ).path('archivedAt');
+    expect(path.options.default).toBeNull();
   });
 
   it('serializes category dependency mutations', () => {
@@ -99,7 +105,16 @@ describe('lifecycle schema defaults', () => {
   });
 
   it.each([
-    ['save source account', TransactionSchema, { sourceAccountId: 1 }],
+    [
+      'transfer source account',
+      TransferSchema,
+      { 'source.accountId': 1, transactionDate: -1 },
+    ],
+    [
+      'transfer destination account',
+      TransferSchema,
+      { 'destination.accountId': 1, transactionDate: -1 },
+    ],
     [
       'expense category',
       TransactionSchema,
@@ -112,6 +127,7 @@ describe('lifecycle schema defaults', () => {
         ownerType: 1,
         ownerId: 1,
         category: 1,
+        currency: 1,
         startDate: -1,
         endDate: -1,
         createdAt: -1,

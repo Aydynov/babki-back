@@ -92,7 +92,14 @@ describe('Group finances HTTP', () => {
       `/groups/${group}/expenses?participantId=${fixture.users[1].id}`,
     ).expect(200);
     expect((list.body as { total: number }).total).toBe(1);
-    await call('post', '/balances').send({ amount: 0 }).expect(201);
+    await call('post', '/accounts')
+      .send({
+        name: 'Personal balance',
+        type: 'balance',
+        currency: 'USD',
+        amount: 0,
+      })
+      .expect(201);
     const personal = await call('get', '/expenses').expect(200);
     expect(
       (personal.body as { items: { _id: string }[] }).items.some(

@@ -28,6 +28,16 @@ describe('UsersService authentication state', () => {
     });
   });
 
+  it('requires a default currency and allows a nullable default account', () => {
+    expect(UserSchema.path('defaultCurrency').options).toMatchObject({
+      required: true,
+      type: String,
+    });
+    expect(UserSchema.path('defaultAccountId').options).toMatchObject({
+      default: null,
+    });
+  });
+
   it('returns only the minimal authentication state', async () => {
     exec.mockResolvedValue({
       _id: userId,
@@ -84,7 +94,7 @@ describe('UsersService authentication state', () => {
   });
 
   it('never returns hidden authentication fields in a profile', async () => {
-    userModel.findOne.mockReturnValueOnce({
+    (userModel.findOne as jest.Mock).mockReturnValueOnce({
       lean: () => ({
         exec: () =>
           Promise.resolve({

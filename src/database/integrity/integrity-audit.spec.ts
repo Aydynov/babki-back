@@ -8,7 +8,11 @@ import { integrityRelations } from './integrity-relations';
 describe('referential integrity audit', () => {
   const expectedRelations = [
     'transaction.account',
-    'transaction.sourceAccount',
+    'transfer.sourceAccount',
+    'transfer.destinationAccount',
+    'transfer.sourceSnapshot',
+    'transfer.destinationSnapshot',
+    'user.defaultAccount',
     'transaction.snapshot',
     'expense.category',
     'limit.category',

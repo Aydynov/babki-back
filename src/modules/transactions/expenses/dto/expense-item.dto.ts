@@ -13,7 +13,7 @@ export class ExpenseItemDto {
   name: string;
 
   @Type(() => Number)
-  @IsNumber({ maxDecimalPlaces: 2 })
+  @IsNumber()
   @Min(0.01)
   price: number;
 

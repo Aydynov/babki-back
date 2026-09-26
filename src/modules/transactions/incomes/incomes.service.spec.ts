@@ -16,6 +16,7 @@ describe('IncomesService transaction origin', () => {
   };
   const transactions = {
     ensureUserExists: jest.fn(),
+    resolveActiveAccount: jest.fn(),
     lockAccounts: jest.fn(),
   };
   const service = new IncomesService(
@@ -27,9 +28,9 @@ describe('IncomesService transaction origin', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    transactions.ensureUserExists.mockResolvedValue({
+    transactions.resolveActiveAccount.mockResolvedValue({
       userId: new Types.ObjectId(userId),
-      accountId,
+      account: { _id: accountId, currency: 'USD' },
     });
     snapshots.findOrCreateByAccountId.mockResolvedValue({
       _id: snapshotId,
@@ -43,6 +44,7 @@ describe('IncomesService transaction origin', () => {
   it('persists an internal transaction origin', async () => {
     const session = {} as ClientSession;
     const dto: CreateIncomeDto = {
+      accountId: accountId.toString(),
       amount: 50,
       transactionDate: '2026-09-21',
     };
@@ -51,14 +53,7 @@ describe('IncomesService transaction origin', () => {
       id: new Types.ObjectId('507f1f77bcf86cd799439014'),
     };
 
-    await (
-      service.create as unknown as (
-        userId: string,
-        dto: CreateIncomeDto,
-        session: ClientSession,
-        origin: typeof origin,
-      ) => Promise<unknown>
-    )(userId, dto, session, origin);
+    await service.create(userId, dto, session, origin);
 
     expect(incomeModel.create).toHaveBeenCalledWith(
       [expect.objectContaining({ origin })],

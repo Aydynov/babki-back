@@ -21,7 +21,7 @@ export class UpdatePlanDto {
 
   @IsOptional()
   @Type(() => Number)
-  @IsNumber({ maxDecimalPlaces: 2 })
+  @IsNumber()
   @Min(0.01)
   amount?: number;
 

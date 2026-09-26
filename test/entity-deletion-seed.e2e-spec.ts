@@ -30,13 +30,16 @@ describe('Entity deletion development seed (real replica set)', () => {
     const candidateAccounts = await accounts
       .find({ userId: candidate!._id })
       .toArray();
-    expect(candidateAccounts).toHaveLength(2);
+    expect(candidateAccounts).toHaveLength(4);
     expect(
       candidateAccounts.filter((account) => account.archivedAt),
     ).toHaveLength(1);
     expect(
+      new Set(candidateAccounts.map((account) => account.currency as string)),
+    ).toEqual(new Set(['RUB', 'USD']));
+    expect(
       candidateAccounts.filter((account) => account.archivedAt === null),
-    ).toHaveLength(1);
+    ).toHaveLength(3);
 
     expect(
       await categories.countDocuments({ name: 'Deletion test: unused' }),

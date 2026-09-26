@@ -31,6 +31,9 @@ export class ExpenseLimit {
 
   @Prop({ required: true, type: Number, min: 0 })
   total: number;
+
+  @Prop({ immutable: true })
+  currency?: string;
 }
 
 export const ExpenseLimitSchema = SchemaFactory.createForClass(ExpenseLimit);
@@ -46,6 +49,7 @@ ExpenseLimitSchema.index({
   ownerType: 1,
   ownerId: 1,
   category: 1,
+  currency: 1,
   startDate: -1,
   endDate: -1,
   createdAt: -1,

@@ -7,16 +7,17 @@ import { ExpenseLimitSchema } from '../modules/expense-limits/schemas/expense-li
 import { GroupMembershipSchema } from '../modules/groups/schemas/group-membership.schema';
 import { PlanSchema } from '../modules/plans/schemas/plan.schema';
 import { TransactionSchema } from '../modules/transactions/schemas/transaction.schema';
+import { TransferSchema } from '../modules/transactions/schemas/transfer.schema';
 import { UserDeletionJobSchema } from '../modules/users/schemas/user-deletion-job.schema';
 
 describe('query-aligned persistence indexes', () => {
-  it('enforces one account of each type per owner without a redundant owner-only index', () => {
+  it('supports multiple personal accounts and owner/currency filtering', () => {
     expect(AccountsSchema.indexes()).toEqual([
-      [
-        { ownerType: 1, ownerId: 1, type: 1 },
-        expect.objectContaining({ unique: true }),
-      ],
       [{ ownerType: 1, ownerId: 1, archivedAt: 1 }, expect.any(Object)],
+      [
+        { ownerType: 1, ownerId: 1, archivedAt: 1, currency: 1, type: 1 },
+        expect.any(Object),
+      ],
     ]);
   });
 
@@ -37,7 +38,13 @@ describe('query-aligned persistence indexes', () => {
     expect(DebtSchema.indexes()).toEqual([
       [{ userId: 1, archivedAt: 1, createdAt: -1 }, expect.any(Object)],
       [
-        { userId: 1, archivedAt: 1, status: 1, createdAt: -1 },
+        {
+          userId: 1,
+          archivedAt: 1,
+          status: 1,
+          currency: 1,
+          createdAt: -1,
+        },
         expect.any(Object),
       ],
     ]);
@@ -73,6 +80,7 @@ describe('query-aligned persistence indexes', () => {
           ownerType: 1,
           ownerId: 1,
           category: 1,
+          currency: 1,
           startDate: -1,
           endDate: -1,
           createdAt: -1,
@@ -106,6 +114,7 @@ describe('query-aligned persistence indexes', () => {
           userId: 1,
           archivedAt: 1,
           status: 1,
+          currency: 1,
           targetDate: 1,
           createdAt: -1,
         },
@@ -178,8 +187,11 @@ describe('query-aligned persistence indexes', () => {
         },
         expect.any(Object),
       ],
-      [{ sourceAccountId: 1 }, expect.any(Object)],
       [{ 'origin.type': 1, 'origin.id': 1 }, expect.any(Object)],
+    ]);
+    expect(TransferSchema.indexes()).toEqual([
+      [{ 'source.accountId': 1, transactionDate: -1 }, expect.any(Object)],
+      [{ 'destination.accountId': 1, transactionDate: -1 }, expect.any(Object)],
     ]);
   });
 

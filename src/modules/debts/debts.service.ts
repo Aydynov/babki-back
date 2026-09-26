@@ -4,6 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { hasValidMoneyPrecision, normalizeMoney } from 'src/common/money/money';
 import { InjectConnection, InjectModel } from '@nestjs/mongoose';
 import { Connection, Model, Types } from 'mongoose';
 import { PaginatedResponse } from '../../common/interfaces/paginated-response.interface';
@@ -38,6 +39,17 @@ export class DebtsService {
   ) {}
 
   async create(userId: string, createDebtDto: CreateDebtDto) {
+    if (
+      !hasValidMoneyPrecision(
+        createDebtDto.principalAmount,
+        createDebtDto.currency,
+      ) ||
+      !hasValidMoneyPrecision(
+        createDebtDto.remainingAmount,
+        createDebtDto.currency,
+      )
+    )
+      throw new BadRequestException('Amount exceeds currency precision.');
     const foundUserId = await this.ensureUserExists(userId);
     this.validateAmounts(
       createDebtDto.principalAmount,
@@ -63,11 +75,13 @@ export class DebtsService {
       userId: Types.ObjectId;
       archivedAt: null;
       status?: 'active' | 'closed';
+      currency?: string;
     } = { userId: foundUserId, archivedAt: null };
 
     if (query.status) {
       filter.status = query.status;
     }
+    if (query.currency) filter.currency = query.currency;
 
     const [items, total] = await Promise.all([
       this.debtModel
@@ -120,6 +134,12 @@ export class DebtsService {
     const remaining =
       updateDebtDto.remainingAmount ?? currentDebt.remainingAmount;
 
+    if (
+      !hasValidMoneyPrecision(principal, currentDebt.currency) ||
+      !hasValidMoneyPrecision(remaining, currentDebt.currency)
+    )
+      throw new BadRequestException('Amount exceeds currency precision.');
+
     this.validateAmounts(principal, remaining);
 
     return this.debtModel
@@ -160,6 +180,8 @@ export class DebtsService {
         'Repayment amount cannot exceed the remaining debt amount.',
       );
     }
+    if (!hasValidMoneyPrecision(repayDebtDto.amount, currentDebt.currency))
+      throw new BadRequestException('Amount exceeds currency precision.');
 
     const session = await this.connection.startSession();
     try {
@@ -177,9 +199,14 @@ export class DebtsService {
           { session },
         );
         if (repayDebtDto.isIncome) {
-          await this.incomeService.create(
+          if (!repayDebtDto.accountId)
+            throw new BadRequestException(
+              'Account is required for an income repayment.',
+            );
+          const income = await this.incomeService.create(
             userId,
             {
+              accountId: repayDebtDto.accountId,
               amount: repayDebtDto.amount,
               transactionDate: repayDebtDto.repaymentDate,
               description: repayDebtDto.description,
@@ -188,12 +215,16 @@ export class DebtsService {
             session,
             { type: 'debt', id: new Types.ObjectId(debtId) },
           );
+          if (income.currency !== currentDebt.currency)
+            throw new BadRequestException(
+              'Debt and account currencies must match.',
+            );
         }
 
-        const remainingAmount =
-          Math.round(
-            (currentDebt.remainingAmount - repayDebtDto.amount) * 100,
-          ) / 100;
+        const remainingAmount = normalizeMoney(
+          currentDebt.remainingAmount - repayDebtDto.amount,
+          currentDebt.currency,
+        );
         const status = remainingAmount === 0 ? 'closed' : currentDebt.status;
 
         const debt = await this.debtModel

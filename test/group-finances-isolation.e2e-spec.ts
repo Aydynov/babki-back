@@ -42,21 +42,36 @@ describe('Group finances isolation and settings HTTP', () => {
   });
 
   it('isolates two group budgets from every personal financial read and mutation', async () => {
-    await api('post', '/balances').send({ amount: 1000 }).expect(201);
-    await api('post', '/savings').send({ amount: 0 }).expect(201);
+    const personalBalanceId = id(
+      await api('post', '/accounts')
+        .send({
+          name: 'Personal balance',
+          type: 'balance',
+          currency: 'USD',
+          amount: 1000,
+        })
+        .expect(201),
+    );
+    const personalSavingId = id(
+      await api('post', '/accounts')
+        .send({
+          name: 'Personal saving',
+          type: 'saving',
+          currency: 'USD',
+          amount: 0,
+        })
+        .expect(201),
+    );
     const personalPaths = [
       '/accounts',
-      '/balances',
-      '/savings',
       '/expense-categories',
       '/expense-limits?periodDate=2024-02-01',
       '/transactions',
       '/expenses',
       '/incomes',
-      '/saves',
+      '/transfers',
       '/expenses/revenue',
       '/incomes/revenue',
-      '/saves/revenue',
       '/reports/months?fromDate=2024-01-01&toDate=2024-12-31',
       '/reports/years',
     ];
@@ -105,7 +120,7 @@ describe('Group finances isolation and settings HTTP', () => {
       `/expenses/${expenseId}`,
       `/incomes/${incomeId}`,
       `/transactions/${expenseId}`,
-      `/saves/${expenseId}`,
+      `/transfers/${expenseId}`,
     ])
       await api('get', path).expect(404);
     for (const [path, payload] of [
@@ -113,7 +128,7 @@ describe('Group finances isolation and settings HTTP', () => {
       [`/expense-limits/${limitId}`, { total: 1 }],
       [`/expenses/${expenseId}`, { amount: 1 }],
       [`/incomes/${incomeId}`, { amount: 1 }],
-      [`/saves/${expenseId}`, { amount: 1 }],
+      [`/transfers/${expenseId}`, { sourceAmount: 1, destinationAmount: 1 }],
     ] as const)
       await api('patch', path).send(payload).expect(404);
     for (const path of [
@@ -126,18 +141,21 @@ describe('Group finances isolation and settings HTTP', () => {
       await api('delete', path).expect(404);
     await api('post', '/expenses')
       .send({
+        accountId: personalBalanceId,
         categoryId: a.categoryId,
         amount: 1,
         transactionDate: '2024-02-01',
       })
       .expect(404);
     await api('post', '/expense-limits')
-      .send({ categoryId: a.categoryId, total: 1 })
+      .send({ categoryId: a.categoryId, currency: 'USD', total: 1 })
       .expect(404);
-    await api('post', '/saves')
+    await api('post', '/transfers')
       .send({
         sourceAccountId: a.accountId,
-        amount: 1,
+        destinationAccountId: personalSavingId,
+        sourceAmount: 1,
+        destinationAmount: 1,
         transactionDate: '2024-02-01',
       })
       .expect(404);

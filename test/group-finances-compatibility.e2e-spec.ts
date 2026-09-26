@@ -14,30 +14,49 @@ describe('Personal and group finance compatibility', () => {
     await fixture?.close();
   });
   it('keeps personal HTTP results isolated while group finances coexist', async () => {
-    await api('post', '/balances').send({ amount: 1000 }).expect(201);
-    await api('post', '/savings').send({ amount: 0 }).expect(201);
+    const balance = await api('post', '/accounts')
+      .send({
+        name: 'Main account',
+        type: 'balance',
+        currency: 'USD',
+        amount: 1000,
+      })
+      .expect(201);
+    const saving = await api('post', '/accounts')
+      .send({
+        name: 'Savings',
+        type: 'saving',
+        currency: 'USD',
+        amount: 0,
+      })
+      .expect(201);
+    const balanceId = (balance.body as { _id: string })._id;
+    const savingId = (saving.body as { _id: string })._id;
     const categories = await api('post', '/expense-categories')
       .send({ name: 'Food' })
       .expect(201);
     const categoryId = (categories.body as { _id: string })._id;
     const date = new Date().toISOString();
     const created = await api('post', '/expenses')
-      .send({ categoryId, amount: 100, transactionDate: date })
+      .send({
+        accountId: balanceId,
+        categoryId,
+        amount: 100,
+        transactionDate: date,
+      })
       .expect(201);
     const expenseId = (created.body as { _id: string })._id;
     await api('patch', `/expenses/${expenseId}`)
       .send({ amount: 150 })
       .expect(200);
-    const account = (await api('get', '/balances').expect(200)).body as {
-      _id: string;
-      amount: number;
-    };
+    const account = (await api('get', `/accounts/${balanceId}`).expect(200))
+      .body as { _id: string; amount: number };
     expect(account.amount).toBe(850);
     const paths = [
       '/accounts',
       '/expenses',
       '/incomes',
-      '/saves',
+      '/transfers',
       '/reports/years',
       '/expense-categories',
     ];
@@ -70,26 +89,32 @@ describe('Personal and group finance compatibility', () => {
       expect((await api('get', path).expect(200)).body).toEqual(
         baseline.get(path),
       );
-    const save = await api('post', '/saves')
+    const transfer = await api('post', '/transfers')
       .send({
-        sourceAccountId: account._id,
-        amount: 50,
+        sourceAccountId: balanceId,
+        destinationAccountId: savingId,
+        sourceAmount: 50,
+        destinationAmount: 50,
         transactionDate: date,
       })
       .expect(201);
     expect(
-      ((await api('get', '/balances')).body as { amount: number }).amount,
+      ((await api('get', `/accounts/${balanceId}`)).body as { amount: number })
+        .amount,
     ).toBe(800);
     expect(
-      ((await api('get', '/savings')).body as { amount: number }).amount,
+      ((await api('get', `/accounts/${savingId}`)).body as { amount: number })
+        .amount,
     ).toBe(50);
-    const saved = save.body as { _id: string };
-    await api('delete', `/transactions/${saved._id}`).expect(204);
+    const saved = transfer.body as { _id: string };
+    await api('delete', `/transfers/${saved._id}`).expect(204);
     expect(
-      ((await api('get', '/balances')).body as { amount: number }).amount,
+      ((await api('get', `/accounts/${balanceId}`)).body as { amount: number })
+        .amount,
     ).toBe(850);
     expect(
-      ((await api('get', '/savings')).body as { amount: number }).amount,
+      ((await api('get', `/accounts/${savingId}`)).body as { amount: number })
+        .amount,
     ).toBe(0);
   });
 });

@@ -9,6 +9,7 @@ import { TransactionDocument } from '../transactions/schemas/transaction.schema'
 describe('DebtsService transaction origin', () => {
   const userId = '507f1f77bcf86cd799439011';
   const debtId = '507f1f77bcf86cd799439012';
+  const accountId = '507f1f77bcf86cd799439013';
   const session = {
     withTransaction: jest.fn(async (work: () => Promise<unknown>) => work()),
     endSession: jest.fn(),
@@ -41,6 +42,7 @@ describe('DebtsService transaction origin', () => {
           debtor: 'Borrower',
           remainingAmount: 100,
           status: 'active',
+          currency: 'RUB',
         }),
       }),
     });
@@ -56,7 +58,9 @@ describe('DebtsService transaction origin', () => {
   });
 
   it('marks generated repayment income with its debt origin', async () => {
+    incomeService.create.mockResolvedValue({ currency: 'RUB' });
     await service.repay(userId, debtId, {
+      accountId,
       amount: 50,
       repaymentDate: '2026-09-21',
       isIncome: true,

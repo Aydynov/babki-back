@@ -2,7 +2,12 @@ import {
   personalBudget,
   personalResponse,
 } from 'src/common/utils/personal-budget.util';
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { hasValidMoneyPrecision } from 'src/common/money/money';
 import { InjectConnection, InjectModel } from '@nestjs/mongoose';
 import { ClientSession, Connection, Model, Types } from 'mongoose';
 import { AccountsSnapshotsService } from '../../accounts-snapshots/accounts-snapshots.service';
@@ -48,26 +53,33 @@ export class IncomesService {
     session: ClientSession,
     origin?: TransactionOrigin,
   ) {
-    const foundIds = await this.transactionsService.ensureUserExists(
+    const foundIds = await this.transactionsService.resolveActiveAccount(
       userId,
-      'balance',
+      createIncomeDto.accountId,
       session,
     );
+    if (
+      !hasValidMoneyPrecision(
+        createIncomeDto.amount,
+        foundIds.account.currency!,
+      )
+    )
+      throw new BadRequestException('Amount exceeds currency precision.');
     await this.transactionsService.lockAccounts(
       userId,
-      [foundIds.accountId.toString()],
+      [foundIds.account._id.toString()],
       session,
     );
     const foundSnapshot = await this.snapshotsService.findOrCreateByAccountId(
       userId,
-      foundIds.accountId.toString(),
+      foundIds.account._id.toString(),
       createIncomeDto.transactionDate,
       session,
     );
 
     if (!foundSnapshot) {
       throw new NotFoundException(
-        `Snapshot for account ${foundIds.accountId.toString()} not found.`,
+        `Snapshot for account ${foundIds.account._id.toString()} not found.`,
       );
     }
 
@@ -76,9 +88,13 @@ export class IncomesService {
         {
           ...personalBudget(foundIds.userId),
           createdBy: foundIds.userId,
-          accountId: foundIds.accountId,
+          accountId: foundIds.account._id,
           snapshotId: foundSnapshot._id,
-          ...createIncomeDto,
+          amount: createIncomeDto.amount,
+          transactionDate: createIncomeDto.transactionDate,
+          description: createIncomeDto.description,
+          source: createIncomeDto.source,
+          currency: foundIds.account.currency,
           origin,
         },
       ],
@@ -137,6 +153,12 @@ export class IncomesService {
         if (!income) {
           throw new NotFoundException(`Income ${transactionId} not found`);
         }
+        if (
+          updateIncomeDto.amount !== undefined &&
+          (!income.currency ||
+            !hasValidMoneyPrecision(updateIncomeDto.amount, income.currency))
+        )
+          throw new BadRequestException('Amount exceeds currency precision.');
 
         await this.transactionsService.lockAccounts(
           userId,

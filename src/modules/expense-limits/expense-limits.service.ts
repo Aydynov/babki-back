@@ -3,10 +3,12 @@ import {
   personalResponse,
 } from 'src/common/utils/personal-budget.util';
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { hasValidMoneyPrecision, normalizeMoney } from 'src/common/money/money';
 import { InjectConnection, InjectModel } from '@nestjs/mongoose';
 import { endOfDay, endOfMonth, startOfDay } from 'date-fns';
 import { startOfMonth } from 'date-fns/startOfMonth';
@@ -34,6 +36,7 @@ type FilterParams = {
   startDate?: string;
   endDate?: string;
   periodDate?: string;
+  currency?: string;
 };
 type FilterResult = {
   _id?: string;
@@ -43,6 +46,7 @@ type FilterResult = {
   category?: Types.ObjectId;
   startDate?: { $lte: Date } | Date;
   endDate?: { $gte: Date } | Date;
+  currency?: string;
 };
 
 @Injectable()
@@ -58,6 +62,13 @@ export class ExpenseLimitsService {
   ) {}
 
   async create(userId: string, createExpenseLimitDto: CreateExpenseLimitDto) {
+    if (
+      !hasValidMoneyPrecision(
+        createExpenseLimitDto.total,
+        createExpenseLimitDto.currency,
+      )
+    )
+      throw new BadRequestException('Amount exceeds currency precision.');
     const startDate = createExpenseLimitDto.startDate
       ? startOfDay(createExpenseLimitDto.startDate)
       : startOfMonth(new Date());
@@ -77,6 +88,7 @@ export class ExpenseLimitsService {
           .exists({
             ...personalBudget(new Types.ObjectId(userId)),
             category: foundCategory._id,
+            currency: createExpenseLimitDto.currency,
             startDate: { $lte: endDate },
             endDate: { $gte: startDate },
           })
@@ -111,6 +123,7 @@ export class ExpenseLimitsService {
           userId,
           categoryId: queryDto.categoryId,
           periodDate: queryDto.periodDate,
+          currency: queryDto.currency,
         }),
       )
       .sort({ startDate: -1, endDate: -1, createdAt: -1 })
@@ -142,6 +155,19 @@ export class ExpenseLimitsService {
     limitId: string,
     updateExpenseLimitDto: UpdateExpenseLimitDto,
   ) {
+    const existing = await this.expenseLimitModel
+      .findOne({ _id: limitId, ...personalBudget(userId) })
+      .lean()
+      .exec();
+    if (!existing)
+      throw new NotFoundException(
+        `Expense limit ${limitId} for user ${userId} not found.`,
+      );
+    if (
+      updateExpenseLimitDto.total !== undefined &&
+      !hasValidMoneyPrecision(updateExpenseLimitDto.total, existing.currency!)
+    )
+      throw new BadRequestException('Amount exceeds currency precision.');
     const limit = await this.expenseLimitModel
       .findOneAndUpdate(
         { _id: limitId, ...personalBudget(new Types.ObjectId(userId)) },
@@ -181,11 +207,12 @@ export class ExpenseLimitsService {
       startDate: limit.startDate.toString(),
       endDate: limit.endDate.toString(),
       categoryId: limit.category._id.toString(),
+      currency: limit.currency!,
     });
 
     return {
       ...personalResponse(limit),
-      rest: limit.total - expenseRevenue,
+      rest: normalizeMoney(limit.total - expenseRevenue, limit.currency!),
     };
   }
 
@@ -199,6 +226,7 @@ export class ExpenseLimitsService {
     if (params.categoryId) {
       filter.category = new Types.ObjectId(params.categoryId);
     }
+    if (params.currency) filter.currency = params.currency;
     if (params.periodDate) {
       const date = new Date(params.periodDate);
       filter.startDate = { $lte: date };
@@ -218,10 +246,11 @@ export class ExpenseLimitsService {
   ) {
     const revenue = await this.expensesService.findRevenue(userId, {
       categoryId: queryDto.categoryId,
+      currency: queryDto.currency,
       transactionType: 'expense',
       fromDate: queryDto.startDate,
       toDate: queryDto.endDate,
     });
-    return revenue.totalRevenue;
+    return revenue.totalRevenue ?? 0;
   }
 }

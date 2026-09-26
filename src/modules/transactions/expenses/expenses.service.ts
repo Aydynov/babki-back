@@ -2,7 +2,12 @@ import {
   personalBudget,
   personalResponse,
 } from 'src/common/utils/personal-budget.util';
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { hasValidMoneyPrecision } from 'src/common/money/money';
 import { InjectConnection, InjectModel } from '@nestjs/mongoose';
 import { ClientSession, Connection, Model, Types } from 'mongoose';
 import { AccountsSnapshotsService } from 'src/modules/accounts-snapshots/accounts-snapshots.service';
@@ -57,14 +62,16 @@ export class ExpensesService {
     session: ClientSession,
     origin?: TransactionOrigin,
   ) {
-    const foundIds = await this.transactionsService.ensureUserExists(
+    const foundIds = await this.transactionsService.resolveActiveAccount(
       userId,
-      'balance',
+      dto.accountId,
       session,
     );
+    if (!hasValidMoneyPrecision(dto.amount, foundIds.account.currency!))
+      throw new BadRequestException('Amount exceeds currency precision.');
     await this.transactionsService.lockAccounts(
       userId,
-      [foundIds.accountId.toString()],
+      [foundIds.account._id.toString()],
       session,
     );
     const category = await this.ensureCategoryExists(
@@ -74,7 +81,7 @@ export class ExpensesService {
     );
     const snapshot = await this.snapshotsService.findOrCreateByAccountId(
       userId,
-      foundIds.accountId.toString(),
+      foundIds.account._id.toString(),
       dto.transactionDate,
       session,
     );
@@ -85,10 +92,11 @@ export class ExpensesService {
           ...personalBudget(foundIds.userId),
           createdBy: foundIds.userId,
           participantId: foundIds.userId,
-          accountId: foundIds.accountId,
+          accountId: foundIds.account._id,
           snapshotId: snapshot._id,
           category,
           amount: dto.amount,
+          currency: foundIds.account.currency,
           transactionDate: dto.transactionDate,
           description: dto.description,
           merchant: dto.merchant,
@@ -100,7 +108,7 @@ export class ExpensesService {
     );
     await this.snapshotsService.recalculateSnapshotsFromDate(
       userId,
-      foundIds.accountId.toString(),
+      foundIds.account._id.toString(),
       { date: dto.transactionDate },
       { amount: -dto.amount },
       session,
@@ -159,7 +167,6 @@ export class ExpensesService {
   async findOne(userId: string, expenseId: string, session?: ClientSession) {
     const foundIds = await this.transactionsService.ensureUserExists(
       userId,
-      'balance',
       session,
     );
     const foundExpense = await this.expenseModel
@@ -202,6 +209,12 @@ export class ExpensesService {
         if (!expense) {
           throw new NotFoundException(`Expense ${expenseId} not found.`);
         }
+        if (
+          updateExpenseDto.amount !== undefined &&
+          (!expense.currency ||
+            !hasValidMoneyPrecision(updateExpenseDto.amount, expense.currency))
+        )
+          throw new BadRequestException('Amount exceeds currency precision.');
 
         const foundCategoryId = updateExpenseDto.categoryId
           ? await this.ensureCategoryExists(
@@ -271,11 +284,12 @@ export class ExpensesService {
     userId: Types.ObjectId,
     query: Partial<ListExpensesQueryDto>,
   ) {
-    const filter: { category?: Types.ObjectId } = {};
+    const filter: { category?: Types.ObjectId; currency?: string } = {};
 
     if (query.categoryId) {
       filter.category = new Types.ObjectId(query.categoryId);
     }
+    if (query.currency) filter.currency = query.currency;
 
     return {
       ...this.transactionsService.buildFilter(userId, query),

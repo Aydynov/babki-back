@@ -4,7 +4,7 @@ import { startOfMonth } from 'date-fns/startOfMonth';
 
 export class CreateAccountSnapshotDto {
   @Type(() => Number)
-  @IsNumber({ maxDecimalPlaces: 2 })
+  @IsNumber()
   @Min(0)
   amount: number;
 

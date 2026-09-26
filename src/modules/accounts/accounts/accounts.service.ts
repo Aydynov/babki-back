@@ -2,7 +2,11 @@ import {
   personalBudget,
   personalResponse,
 } from 'src/common/utils/personal-budget.util';
-import { Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectConnection, InjectModel } from '@nestjs/mongoose';
 import { ClientSession, Connection, Model, Types } from 'mongoose';
 import {
@@ -20,6 +24,10 @@ import {
   AccountDocument,
   AccountType,
 } from '../schemas/accounts.schema';
+import {
+  hasValidMoneyPrecision,
+  normalizeCurrency,
+} from 'src/common/money/money';
 
 @Injectable()
 export class AccountsService {
@@ -47,18 +55,12 @@ export class AccountsService {
     return this.buildResponse(entities, { toDate: query.toDate });
   }
 
-  async create(
-    userId: string,
-    query: { type: AccountType },
-    createAccountDto: CreateAccountDto,
-  ) {
+  async create(userId: string, createAccountDto: CreateAccountDto) {
     const foundUserId = await this.usersService.ensureIdExists(userId);
-    const existingEntity = await this.accountModel
-      .findOne(this.buildFilter(foundUserId, query))
-      .lean();
-    if (existingEntity) {
-      return this.buildResponse([existingEntity]);
-    }
+    const currency = normalizeCurrency(createAccountDto.currency);
+    const amount = createAccountDto.amount ?? 0;
+    if (!hasValidMoneyPrecision(amount, currency))
+      throw new BadRequestException('Amount exceeds currency precision.');
 
     const session = await this.connection.startSession();
     try {
@@ -67,8 +69,13 @@ export class AccountsService {
           [
             {
               ...personalBudget(foundUserId),
-              type: query.type,
-              initialAmount: createAccountDto.amount ?? 0,
+              type: createAccountDto.type,
+              name: createAccountDto.name.trim(),
+              currency,
+              initialAmount: amount,
+              openedAt: createAccountDto.openedAt
+                ? new Date(createAccountDto.openedAt)
+                : new Date(),
             },
           ],
           { session },
@@ -76,16 +83,56 @@ export class AccountsService {
         const snapshot = await this.snapshotsService.create(
           userId,
           createdEntity._id.toString(),
-          { amount: createAccountDto.amount ?? 0, date: new Date() },
+          {
+            amount,
+            date: createAccountDto.openedAt
+              ? new Date(createAccountDto.openedAt)
+              : new Date(),
+          },
           session,
         );
-        return this.buildResponse([createdEntity.toObject()], undefined, [
-          { _id: createdEntity._id, documents: [snapshot] },
-        ]);
+        if (createdEntity.type === 'balance') {
+          await this.usersService.selectFirstDefaultAccount(
+            userId,
+            createdEntity._id,
+            currency,
+            session,
+          );
+        }
+        const [response] = await this.buildResponse(
+          [createdEntity.toObject()],
+          undefined,
+          [{ _id: createdEntity._id, documents: [snapshot] }],
+        );
+        return response;
       });
     } finally {
       await session.endSession();
     }
+  }
+
+  async findOne(userId: string, accountId: string) {
+    const account = await this.accountModel
+      .findOne({ _id: accountId, ...personalBudget(userId) })
+      .lean()
+      .exec();
+    if (!account)
+      throw new NotFoundException(`Account ${accountId} not found.`);
+    return (await this.buildResponse([account]))[0];
+  }
+
+  async rename(userId: string, accountId: string, name: string) {
+    const account = await this.accountModel
+      .findOneAndUpdate(
+        { _id: accountId, ...personalBudget(userId) },
+        { $set: { name: name.trim() } },
+        { returnDocument: 'after', runValidators: true },
+      )
+      .lean()
+      .exec();
+    if (!account)
+      throw new NotFoundException(`Account ${accountId} not found.`);
+    return (await this.buildResponse([account]))[0];
   }
 
   async deleteEntity(userId: string, entityId: string) {
@@ -125,6 +172,7 @@ export class AccountsService {
           { session },
         );
         if (!deleted) throw new DeletionTargetNotFoundException('Account');
+        await this.usersService.clearDefaultAccount(userId, entityId, session);
         return null;
       });
     } finally {
@@ -150,6 +198,7 @@ export class AccountsService {
           .lean()
           .exec();
         if (!archived) throw new DeletionTargetNotFoundException('Account');
+        await this.usersService.clearDefaultAccount(userId, entityId, session);
       });
     } finally {
       await session.endSession();
@@ -178,6 +227,8 @@ export class AccountsService {
         )?.documents ?? [];
       return {
         ...personalResponse(entity),
+        initialAmount: entity.initialAmount ?? 0,
+        openedAt: entity.openedAt,
         amount: entitySnapshots[0]?.amount ?? 0,
         timeline: entitySnapshots,
       };
@@ -190,11 +241,13 @@ export class AccountsService {
       ownerType: 'user';
       ownerId: Types.ObjectId;
       type?: AccountType;
+      currency?: string;
     } = { ...personalBudget(userId) };
 
     if (params.type) {
       filter.type = params.type;
     }
+    if (params.currency) filter.currency = params.currency;
 
     return filter;
   }

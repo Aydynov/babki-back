@@ -22,7 +22,8 @@ describe('AuthService', () => {
     email: 'ada@example.com',
     firstName: 'Ada',
     lastName: 'Lovelace',
-    currency: 'USD',
+    defaultCurrency: 'USD',
+    defaultAccountId: null,
   };
   const usersService = {
     createWithPassword: jest.fn(),
@@ -90,7 +91,7 @@ describe('AuthService', () => {
       lastName: 'Lovelace',
       email: 'Ada@Example.com',
       password: 'password123',
-      currency: 'USD',
+      currency: 'usd',
     });
 
     expect(usersService.createWithPassword).toHaveBeenCalledWith(
@@ -99,6 +100,7 @@ describe('AuthService', () => {
         lastName: 'Lovelace',
         email: 'Ada@Example.com',
         description: undefined,
+        defaultCurrency: 'USD',
       },
       expect.any(String),
     );

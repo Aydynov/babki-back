@@ -5,6 +5,7 @@ import { startGroupsTestApp } from './helpers/groups-test-app';
 describe('Personal category lifecycle (real MongoDB replica set)', () => {
   let harness: Awaited<ReturnType<typeof startGroupsTestApp>>;
   let sequence = 0;
+  let accountId: string;
   const oid = (value: string) => new Types.ObjectId(value);
   const collection = (name: string) => harness.connection.collection(name);
   const api = () => {
@@ -32,7 +33,17 @@ describe('Personal category lifecycle (real MongoDB replica set)', () => {
   }
 
   async function balance() {
-    return idOf(await api().post('/balances', { amount: 100 }).expect(201));
+    sequence += 1;
+    return idOf(
+      await api()
+        .post('/accounts', {
+          name: `Balance-${sequence}`,
+          type: 'balance',
+          currency: 'USD',
+          amount: 100,
+        })
+        .expect(201),
+    );
   }
 
   function createDependency(
@@ -41,6 +52,7 @@ describe('Personal category lifecycle (real MongoDB replica set)', () => {
   ) {
     if (kind === 'expense') {
       return api().post('/expenses', {
+        accountId,
         categoryId,
         amount: 10,
         transactionDate: date,
@@ -49,6 +61,7 @@ describe('Personal category lifecycle (real MongoDB replica set)', () => {
     if (kind === 'limit') {
       return api().post('/expense-limits', {
         categoryId,
+        currency: 'USD',
         total: 50,
         startDate: '2026-09-01',
         endDate: '2026-09-30',
@@ -56,6 +69,7 @@ describe('Personal category lifecycle (real MongoDB replica set)', () => {
     }
     return api().post('/plans', {
       categoryId,
+      currency: 'USD',
       description: 'Plan dependency',
       amount: 50,
       targetDate: '2026-12-01',
@@ -82,7 +96,7 @@ describe('Personal category lifecycle (real MongoDB replica set)', () => {
           : { $or: [{ ownerId: user }, { userId: user }] },
       );
     }
-    await balance();
+    accountId = await balance();
   });
 
   afterAll(async () => {

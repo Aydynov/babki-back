@@ -42,12 +42,29 @@ describe('personal transactions boundary', () => {
       deletedAt: null,
     });
   });
+  it('filters account history through either transfer effect', () => {
+    const accountId = new Types.ObjectId(first);
+    expect(
+      service.buildFilter(new Types.ObjectId(userId), { accountId: first }),
+    ).toMatchObject({
+      $or: [
+        { accountId },
+        { 'source.accountId': accountId },
+        { 'destination.accountId': accountId },
+      ],
+    });
+    expect(
+      service.buildFilter(new Types.ObjectId(userId), {
+        accountId: first,
+        transactionType: 'income',
+      }),
+    ).toMatchObject({ accountId, type: 'income' });
+  });
   it('uses the indexed stable order for transaction pagination', async () => {
     jest.spyOn(service, 'ensureUserExists').mockResolvedValue({
       userId: new Types.ObjectId(userId),
       ownerType: 'user',
       ownerId: new Types.ObjectId(userId),
-      accountId: new Types.ObjectId(first),
     });
     const exec = jest.fn().mockResolvedValue([]);
     const limit = jest.fn().mockReturnValue({ lean: () => ({ exec }) });
@@ -96,7 +113,8 @@ describe('personal transactions boundary', () => {
       userId: new Types.ObjectId(userId),
       $or: [
         { accountId: new Types.ObjectId(first) },
-        { sourceAccountId: new Types.ObjectId(first) },
+        { 'source.accountId': new Types.ObjectId(first) },
+        { 'destination.accountId': new Types.ObjectId(first) },
       ],
     });
     expect(historyQuery.session).toHaveBeenCalledWith(session);
@@ -133,39 +151,6 @@ describe('personal transactions boundary', () => {
         },
       },
       { returnDocument: 'after', session },
-    );
-    expect(snapshots.recalculateSnapshotsFromDate).toHaveBeenCalledWith(
-      userId,
-      first,
-      expect.anything(),
-      { amount: 42 },
-      session,
-    );
-  });
-
-  it('compensates both sides of a save exactly once', async () => {
-    const tx = {
-      _id: second,
-      accountId: new Types.ObjectId(second),
-      sourceAccountId: new Types.ObjectId(first),
-      transactionDate: new Date(),
-      amount: 42,
-      type: 'save',
-    };
-    transactionModel.findOne.mockReturnValue({
-      session: () => ({ lean: () => ({ exec: async () => tx }) }),
-    });
-    transactionModel.findOneAndUpdate.mockResolvedValue(tx);
-
-    await service.delete(userId, second);
-
-    expect(snapshots.recalculateSnapshotsFromDate).toHaveBeenCalledTimes(2);
-    expect(snapshots.recalculateSnapshotsFromDate).toHaveBeenCalledWith(
-      userId,
-      second,
-      expect.anything(),
-      { amount: -42 },
-      session,
     );
     expect(snapshots.recalculateSnapshotsFromDate).toHaveBeenCalledWith(
       userId,

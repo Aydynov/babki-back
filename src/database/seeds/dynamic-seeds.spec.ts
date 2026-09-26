@@ -5,7 +5,7 @@ import { ExpenseCategoriesService } from '../../modules/expense-categories/expen
 import { PlansService } from '../../modules/plans/plans.service';
 import { ExpensesService } from '../../modules/transactions/expenses/expenses.service';
 import { IncomesService } from '../../modules/transactions/incomes/incomes.service';
-import { SavesService } from '../../modules/transactions/saves/saves.service';
+import { TransfersService } from '../../modules/transactions/transfers/transfers.service';
 import { TransactionsService } from '../../modules/transactions/transactions/transactions.service';
 import { CategoryMap } from './03-categories';
 import { seedCategories } from './03-categories';
@@ -17,6 +17,9 @@ import { seedPlans } from './07-plans';
 const anchorDate = new Date('2030-03-08T18:30:00.000Z');
 const userId = '507f1f77bcf86cd799439011';
 const balanceAccountId = '507f1f77bcf86cd799439012';
+const savingAccountId = '507f1f77bcf86cd799439013';
+const usdBalanceAccountId = '507f1f77bcf86cd799439014';
+const usdSavingAccountId = '507f1f77bcf86cd799439015';
 const categories: CategoryMap = {
   'Food & Dining': '507f1f77bcf86cd799439021',
   Transport: '507f1f77bcf86cd799439022',
@@ -38,13 +41,13 @@ describe('dynamic seed dates', () => {
       create: jest.fn().mockResolvedValue({ _id: 'income-id' }),
     };
     const expenses = { create: jest.fn().mockResolvedValue({}) };
-    const saves = { create: jest.fn().mockResolvedValue({}) };
+    const transfers = { create: jest.fn().mockResolvedValue({}) };
     const transactions = { delete: jest.fn().mockResolvedValue(undefined) };
     const app = createApp(
       new Map<unknown, unknown>([
         [IncomesService, incomes],
         [ExpensesService, expenses],
-        [SavesService, saves],
+        [TransfersService, transfers],
         [TransactionsService, transactions],
       ]),
     );
@@ -53,6 +56,9 @@ describe('dynamic seed dates', () => {
       app,
       userId,
       balanceAccountId,
+      savingAccountId,
+      usdBalanceAccountId,
+      usdSavingAccountId,
       categories,
       anchorDate,
     );
@@ -60,14 +66,14 @@ describe('dynamic seed dates', () => {
     const calls = [
       ...incomes.create.mock.calls,
       ...expenses.create.mock.calls,
-      ...saves.create.mock.calls,
+      ...transfers.create.mock.calls,
     ];
     const dates = calls
       .map((call) => (call[1] as { transactionDate: string }).transactionDate)
       .sort();
     const anchorMonthCalls = dates.filter((date) => date.startsWith('2030-03'));
 
-    expect(calls).toHaveLength(117);
+    expect(calls).toHaveLength(120);
     expect(dates[0]).toBe('2028-08-01T00:00:00.000Z');
     expect(dates.at(-1)).toBe('2030-03-28T00:00:00.000Z');
     expect(anchorMonthCalls).toHaveLength(9);
@@ -79,13 +85,13 @@ describe('dynamic seed dates', () => {
       create: jest.fn().mockResolvedValue({ _id: 'income-id' }),
     };
     const expenses = { create: jest.fn().mockResolvedValue({}) };
-    const saves = { create: jest.fn().mockResolvedValue({}) };
+    const transfers = { create: jest.fn().mockResolvedValue({}) };
     const transactions = { delete: jest.fn().mockResolvedValue(undefined) };
     const app = createApp(
       new Map<unknown, unknown>([
         [IncomesService, incomes],
         [ExpensesService, expenses],
-        [SavesService, saves],
+        [TransfersService, transfers],
         [TransactionsService, transactions],
       ]),
     );
@@ -96,6 +102,9 @@ describe('dynamic seed dates', () => {
           app,
           userId,
           balanceAccountId,
+          savingAccountId,
+          usdBalanceAccountId,
+          usdSavingAccountId,
           categories,
           new Date(Date.UTC(2030, month, 8)),
         ),
@@ -137,14 +146,23 @@ describe('dynamic seed dates', () => {
 
     expect(limits.create.mock.calls.map((call) => call[1])).toEqual([
       {
+        currency: 'RUB',
         categoryId: categories['Food & Dining'],
         total: 65000,
         startDate: '2030-03-01T00:00:00.000Z',
         endDate: '2030-03-31T00:00:00.000Z',
       },
       {
+        currency: 'RUB',
         categoryId: categories['Entertainment'],
         total: 25000,
+        startDate: '2030-03-01T00:00:00.000Z',
+        endDate: '2030-03-31T00:00:00.000Z',
+      },
+      {
+        currency: 'USD',
+        categoryId: categories['Entertainment'],
+        total: 300,
         startDate: '2030-03-01T00:00:00.000Z',
         endDate: '2030-03-31T00:00:00.000Z',
       },
@@ -163,38 +181,42 @@ describe('dynamic seed dates', () => {
     };
     const app = createApp(new Map<unknown, unknown>([[DebtsService, debts]]));
 
-    await seedDebts(app, userId, anchorDate);
+    await seedDebts(app, userId, 'account-id', anchorDate);
 
     expect(debts.create.mock.calls[0][1]).toMatchObject({
       dueDate: '2030-05-01T00:00:00.000Z',
     });
     expect(debts.repay.mock.calls.map((call) => call[2])).toEqual([
       {
+        accountId: 'account-id',
         repaymentDate: '2029-11-10T00:00:00.000Z',
         amount: 20000,
         description: 'First repayment',
         isIncome: false,
       },
       {
+        accountId: 'account-id',
         repaymentDate: '2030-01-15T00:00:00.000Z',
         amount: 10000,
         description: 'Second repayment',
         isIncome: false,
       },
       {
+        accountId: 'account-id',
         repaymentDate: '2030-03-05T00:00:00.000Z',
         amount: 5000,
         description: 'Current month repayment',
         isIncome: false,
       },
       {
+        accountId: 'account-id',
         repaymentDate: '2029-12-20T00:00:00.000Z',
         amount: 100000,
         description: 'Full repayment',
         isIncome: false,
       },
     ]);
-    expect(debts.create).toHaveBeenCalledTimes(3);
+    expect(debts.create).toHaveBeenCalledTimes(4);
     expect(debts.archive).toHaveBeenCalledWith(userId, 'maria');
   });
 
@@ -206,7 +228,7 @@ describe('dynamic seed dates', () => {
     };
     const app = createApp(new Map<unknown, unknown>([[PlansService, plans]]));
 
-    await seedPlans(app, userId, categories, anchorDate);
+    await seedPlans(app, userId, 'account-id', categories, anchorDate);
 
     expect(
       plans.create.mock.calls.map(
@@ -217,17 +239,20 @@ describe('dynamic seed dates', () => {
       '2030-05-01T00:00:00.000Z',
       '2030-04-20T00:00:00.000Z',
       '2030-02-01T00:00:00.000Z',
+      '2030-07-01T00:00:00.000Z',
       '2030-01-20T00:00:00.000Z',
       '2029-12-15T00:00:00.000Z',
       '2029-11-10T00:00:00.000Z',
     ]);
     expect(plans.close.mock.calls.map((call) => call[2])).toEqual([
-      { closingDate: '2030-01-15T00:00:00.000Z' },
+      { accountId: 'account-id', closingDate: '2030-01-15T00:00:00.000Z' },
       {
+        accountId: 'account-id',
         closingDate: '2029-12-15T00:00:00.000Z',
         description: 'Bought new router and switched plan',
       },
       {
+        accountId: 'account-id',
         closingDate: '2029-11-15T00:00:00.000Z',
         amount: 25000,
       },

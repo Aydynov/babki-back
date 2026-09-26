@@ -30,11 +30,29 @@ describe('Personal account deletion (real MongoDB replica set)', () => {
   const date = '2026-09-21T00:00:00.000Z';
 
   async function balance(amount = 0) {
-    return idOf(await api().post('/balances', { amount }).expect(201));
+    return idOf(
+      await api()
+        .post('/accounts', {
+          name: `Balance-${Date.now()}-${Math.random()}`,
+          type: 'balance',
+          currency: 'USD',
+          amount,
+        })
+        .expect(201),
+    );
   }
 
   async function saving(amount = 0) {
-    return idOf(await api().post('/savings', { amount }).expect(201));
+    return idOf(
+      await api()
+        .post('/accounts', {
+          name: `Saving-${Date.now()}-${Math.random()}`,
+          type: 'saving',
+          currency: 'USD',
+          amount,
+        })
+        .expect(201),
+    );
   }
 
   async function category() {
@@ -85,9 +103,11 @@ describe('Personal account deletion (real MongoDB replica set)', () => {
       { $set: { amount: 100 } },
     );
     await api()
-      .post('/saves', {
-        amount: 25,
+      .post('/transfers', {
+        sourceAmount: 25,
+        destinationAmount: 25,
         sourceAccountId: balanceId,
+        destinationAccountId: savingId,
         transactionDate: date,
       })
       .expect(201);
@@ -106,9 +126,9 @@ describe('Personal account deletion (real MongoDB replica set)', () => {
     ).toBe(2);
     expect(
       await collection('transactions').countDocuments({
-        type: 'save',
-        accountId: oid(savingId),
-        sourceAccountId: oid(balanceId),
+        type: 'transfer',
+        'source.accountId': oid(balanceId),
+        'destination.accountId': oid(savingId),
       }),
     ).toBe(1);
     expect(
@@ -122,13 +142,13 @@ describe('Personal account deletion (real MongoDB replica set)', () => {
   it('keeps archived account history readable and rejects a new operation', async () => {
     const accountId = await balance();
     await api()
-      .post('/incomes', { amount: 10, transactionDate: date })
+      .post('/incomes', { accountId, amount: 10, transactionDate: date })
       .expect(201);
 
     await api().post(`/accounts/${accountId}/archive`).expect(204);
 
     await api()
-      .post('/incomes', { amount: 5, transactionDate: date })
+      .post('/incomes', { accountId, amount: 5, transactionDate: date })
       .expect(404);
     const history = await api().get('/transactions').expect(200);
     expect((history.body as { total: number }).total).toBe(1);
@@ -138,26 +158,34 @@ describe('Personal account deletion (real MongoDB replica set)', () => {
     ).toBeInstanceOf(Date);
   });
 
-  it.each(['income', 'expense', 'save'] as const)(
+  it.each(['income', 'expense', 'transfer'] as const)(
     'serializes account deletion against %s creation',
     async (kind) => {
-      const sourceAccountId = kind === 'save' ? await balance(100) : undefined;
-      const accountId = kind === 'save' ? await saving() : await balance();
+      const sourceAccountId =
+        kind === 'transfer' ? await balance(100) : undefined;
+      const accountId = kind === 'transfer' ? await saving() : await balance();
       const categoryId = kind === 'expense' ? await category() : undefined;
       const create = () => {
         if (kind === 'income') {
-          return api().post('/incomes', { amount: 10, transactionDate: date });
-        }
-        if (kind === 'expense') {
-          return api().post('/expenses', {
-            categoryId,
+          return api().post('/incomes', {
+            accountId,
             amount: 10,
             transactionDate: date,
           });
         }
-        return api().post('/saves', {
+        if (kind === 'expense') {
+          return api().post('/expenses', {
+            categoryId,
+            accountId,
+            amount: 10,
+            transactionDate: date,
+          });
+        }
+        return api().post('/transfers', {
           sourceAccountId,
-          amount: 10,
+          destinationAccountId: accountId,
+          sourceAmount: 10,
+          destinationAmount: 10,
           transactionDate: date,
         });
       };
@@ -178,7 +206,8 @@ describe('Personal account deletion (real MongoDB replica set)', () => {
         {
           $or: [
             { accountId: oid(accountId) },
-            { sourceAccountId: oid(accountId) },
+            { 'source.accountId': oid(accountId) },
+            { 'destination.accountId': oid(accountId) },
           ],
         },
       );
@@ -200,39 +229,51 @@ describe('Personal account deletion (real MongoDB replica set)', () => {
     },
   );
 
-  it.each(['income', 'expense', 'save'] as const)(
+  it.each(['income', 'expense', 'transfer'] as const)(
     'soft deletes a personal %s, hides it and preserves immutable dependencies',
     async (kind) => {
-      const sourceAccountId = kind === 'save' ? await balance(100) : undefined;
+      const sourceAccountId =
+        kind === 'transfer' ? await balance(100) : undefined;
       const accountId =
-        kind === 'save'
+        kind === 'transfer'
           ? await saving()
           : await balance(kind === 'expense' ? 100 : 0);
       const categoryId = kind === 'expense' ? await category() : undefined;
       const created =
         kind === 'income'
           ? await api()
-              .post('/incomes', { amount: 10, transactionDate: date })
+              .post('/incomes', {
+                accountId,
+                amount: 10,
+                transactionDate: date,
+              })
               .expect(201)
           : kind === 'expense'
             ? await api()
                 .post('/expenses', {
                   categoryId,
+                  accountId,
                   amount: 10,
                   transactionDate: date,
                 })
                 .expect(201)
             : await api()
-                .post('/saves', {
+                .post('/transfers', {
                   sourceAccountId,
-                  amount: 10,
+                  destinationAccountId: accountId,
+                  sourceAmount: 10,
+                  destinationAmount: 10,
                   transactionDate: date,
                 })
                 .expect(201);
       const transactionId = idOf(created);
 
-      await api().delete(`/transactions/${transactionId}`).expect(204);
-      await api().delete(`/transactions/${transactionId}`).expect(404);
+      const deletionPath =
+        kind === 'transfer'
+          ? `/transfers/${transactionId}`
+          : `/transactions/${transactionId}`;
+      await api().delete(deletionPath).expect(204);
+      await api().delete(deletionPath).expect(404);
       await api().get(`/transactions/${transactionId}`).expect(404);
 
       expect((await api().get('/transactions').expect(200)).body).toMatchObject(
@@ -246,14 +287,16 @@ describe('Personal account deletion (real MongoDB replica set)', () => {
           ? '/incomes'
           : kind === 'expense'
             ? '/expenses'
-            : '/saves';
+            : '/transfers';
       expect((await api().get(typedPath).expect(200)).body).toMatchObject({
         total: 0,
         items: [],
       });
-      expect(
-        (await api().get(`${typedPath}/revenue`).expect(200)).body,
-      ).toMatchObject({ totalRevenue: 0 });
+      if (kind !== 'transfer') {
+        expect(
+          (await api().get(`${typedPath}/revenue`).expect(200)).body,
+        ).toMatchObject({ totalRevenue: 0 });
+      }
 
       const stored = await collection('transactions').findOne({
         _id: oid(transactionId),
@@ -275,7 +318,7 @@ describe('Personal account deletion (real MongoDB replica set)', () => {
   it('compensates a transaction only once under concurrent deletion', async () => {
     const accountId = await balance();
     const created = await api()
-      .post('/incomes', { amount: 25, transactionDate: date })
+      .post('/incomes', { accountId, amount: 25, transactionDate: date })
       .expect(201);
     const transactionId = idOf(created);
 

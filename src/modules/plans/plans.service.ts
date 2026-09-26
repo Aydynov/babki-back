@@ -4,6 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { hasValidMoneyPrecision } from 'src/common/money/money';
 import { InjectConnection, InjectModel } from '@nestjs/mongoose';
 import { ClientSession, Connection, Model, Types } from 'mongoose';
 import { PaginatedResponse } from '../../common/interfaces/paginated-response.interface';
@@ -33,6 +34,8 @@ export class PlansService {
   ) {}
 
   async create(userId: string, createPlanDto: CreatePlanDto) {
+    if (!hasValidMoneyPrecision(createPlanDto.amount, createPlanDto.currency))
+      throw new BadRequestException('Amount exceeds currency precision.');
     const session = await this.connection.startSession();
     try {
       return await session.withTransaction(async () => {
@@ -65,6 +68,7 @@ export class PlansService {
       userId: Types.ObjectId;
       archivedAt: null;
       status?: PlanStatus;
+      currency?: string;
     } = {
       userId: foundUserId,
       archivedAt: null,
@@ -72,6 +76,7 @@ export class PlansService {
     if (query.status) {
       filter.status = query.status;
     }
+    if (query.currency) filter.currency = query.currency;
 
     const [items, total] = await Promise.all([
       this.planModel
@@ -126,6 +131,11 @@ export class PlansService {
         if (currentPlan.status === 'closed') {
           throw new BadRequestException('Cannot update a closed plan.');
         }
+        if (
+          updatePlanDto.amount !== undefined &&
+          !hasValidMoneyPrecision(updatePlanDto.amount, currentPlan.currency)
+        )
+          throw new BadRequestException('Amount exceeds currency precision.');
         if (updatePlanDto.categoryId) {
           await lockPersonalExpenseCategory(
             this.expenseCategoryModel,
@@ -225,6 +235,8 @@ export class PlansService {
     const transactionDate =
       closePlanDto.closingDate ?? new Date().toISOString();
     const amount = closePlanDto.amount ?? plan.amount;
+    if (!hasValidMoneyPrecision(amount, plan.currency))
+      throw new BadRequestException('Amount exceeds currency precision.');
     const description = closePlanDto.description ?? plan.description;
 
     const session = await this.connection.startSession();
@@ -233,6 +245,7 @@ export class PlansService {
         const expense = await this.expensesService.create(
           userId,
           {
+            accountId: closePlanDto.accountId,
             categoryId: plan.categoryId.toString(),
             amount,
             transactionDate,
@@ -241,6 +254,10 @@ export class PlansService {
           session,
           { type: 'plan', id: new Types.ObjectId(planId) },
         );
+        if (expense.currency !== plan.currency)
+          throw new BadRequestException(
+            'Plan and account currencies must match.',
+          );
 
         const closedPlan = await this.planModel
           .findOneAndUpdate(

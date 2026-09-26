@@ -3,10 +3,6 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { AccountsSnapshotsModule } from '../accounts-snapshots/accounts-snapshots.module';
 import { TransactionsModule } from '../transactions/transactions.module';
 import { UsersModule } from '../users/users.module';
-import { BalancesController } from './balances/balances.controller';
-import { BalancesService } from './balances/balances.service';
-import { SavingsController } from './savings/savings.controller';
-import { SavingsService } from './savings/savings.service';
 import { Account, AccountsSchema } from './schemas/accounts.schema';
 import { AccountsController } from './accounts/accounts.controller';
 import { AccountsService } from './accounts/accounts.service';
@@ -29,8 +25,8 @@ import { Saving, SavingsSchema } from './schemas/savings.schema';
       },
     ]),
   ],
-  controllers: [AccountsController, BalancesController, SavingsController],
-  providers: [AccountsService, BalancesService, SavingsService],
+  controllers: [AccountsController],
+  providers: [AccountsService],
   exports: [MongooseModule, AccountsService],
 })
 export class AccountsModule {}

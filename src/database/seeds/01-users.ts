@@ -44,6 +44,7 @@ export async function seedUsers(app: INestApplicationContext) {
         firstName: definition.firstName,
         lastName: definition.lastName,
         email: definition.email,
+        defaultCurrency: 'RUB',
       },
       passwordHash,
     );

@@ -5,6 +5,7 @@ import { startGroupsTestApp } from './helpers/groups-test-app';
 describe('Plan and debt lifecycle (real MongoDB replica set)', () => {
   let harness: Awaited<ReturnType<typeof startGroupsTestApp>>;
   let sequence = 0;
+  let accountId: string;
   const oid = (value: string) => new Types.ObjectId(value);
   const collection = (name: string) => harness.connection.collection(name);
   const api = () => {
@@ -35,6 +36,7 @@ describe('Plan and debt lifecycle (real MongoDB replica set)', () => {
       await api()
         .post('/plans', {
           categoryId: await category(),
+          currency: 'USD',
           description: 'Lifecycle plan',
           amount: 50,
           targetDate: '2026-12-01',
@@ -48,6 +50,7 @@ describe('Plan and debt lifecycle (real MongoDB replica set)', () => {
       await api()
         .post('/debts', {
           debtor: 'Borrower',
+          currency: 'USD',
           principalAmount: 100,
           remainingAmount: 100,
         })
@@ -76,7 +79,16 @@ describe('Plan and debt lifecycle (real MongoDB replica set)', () => {
           : { $or: [{ ownerId: user }, { userId: user }] },
       );
     }
-    await api().post('/balances', { amount: 0 }).expect(201);
+    accountId = idOf(
+      await api()
+        .post('/accounts', {
+          name: 'Lifecycle balance',
+          type: 'balance',
+          currency: 'USD',
+          amount: 0,
+        })
+        .expect(201),
+    );
   });
 
   afterAll(async () => {
@@ -94,7 +106,7 @@ describe('Plan and debt lifecycle (real MongoDB replica set)', () => {
   it('restricts and archives a closed plan while retaining its origin expense', async () => {
     const planId = await plan();
     await api()
-      .post(`/plans/${planId}/close`, { closingDate: date })
+      .post(`/plans/${planId}/close`, { closingDate: date, accountId })
       .expect(201);
     const originFilter = { 'origin.type': 'plan', 'origin.id': oid(planId) };
     const expense = await collection('transactions').findOne(originFilter);
@@ -133,6 +145,7 @@ describe('Plan and debt lifecycle (real MongoDB replica set)', () => {
         amount: 25,
         repaymentDate: date,
         isIncome: true,
+        accountId,
       })
       .expect(201);
     const originFilter = { 'origin.type': 'debt', 'origin.id': oid(debtId) };
@@ -157,7 +170,7 @@ describe('Plan and debt lifecycle (real MongoDB replica set)', () => {
   it('serializes plan close against archival', async () => {
     const planId = await plan();
     const [closing, archival] = await Promise.all([
-      api().post(`/plans/${planId}/close`, { closingDate: date }),
+      api().post(`/plans/${planId}/close`, { closingDate: date, accountId }),
       api().post(`/plans/${planId}/archive`),
     ]);
 
@@ -183,6 +196,7 @@ describe('Plan and debt lifecycle (real MongoDB replica set)', () => {
         amount: 25,
         repaymentDate: date,
         isIncome: true,
+        accountId,
       }),
       api().post(`/debts/${debtId}/archive`),
     ]);
@@ -211,7 +225,7 @@ describe('Plan and debt lifecycle (real MongoDB replica set)', () => {
   it('keeps origin attribution when source archival races transaction deletion', async () => {
     const planId = await plan();
     await api()
-      .post(`/plans/${planId}/close`, { closingDate: date })
+      .post(`/plans/${planId}/close`, { closingDate: date, accountId })
       .expect(201);
     const originFilter = { 'origin.type': 'plan', 'origin.id': oid(planId) };
     const expense = await collection('transactions').findOne(originFilter);

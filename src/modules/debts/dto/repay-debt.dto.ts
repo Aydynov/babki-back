@@ -3,6 +3,7 @@ import {
   IsBoolean,
   IsDateString,
   IsNumber,
+  IsMongoId,
   IsOptional,
   IsString,
   MaxLength,
@@ -10,11 +11,15 @@ import {
 } from 'class-validator';
 
 export class RepayDebtDto {
+  @IsOptional()
+  @IsMongoId()
+  accountId?: string;
+
   @IsDateString()
   repaymentDate: string;
 
   @Type(() => Number)
-  @IsNumber({ maxDecimalPlaces: 2 })
+  @IsNumber()
   @Min(0.01)
   amount: number;
 
