@@ -54,6 +54,92 @@ describe('ReportsService multicurrency buckets', () => {
     ]);
   });
 
+  describe('personal report history', () => {
+    beforeEach(() => {
+      jest.useFakeTimers().setSystemTime(new Date('2026-02-15T12:00:00Z'));
+      transactions.aggregate.mockResolvedValue([]);
+      snapshotExec.mockResolvedValue([]);
+    });
+
+    afterEach(() => jest.useRealTimers());
+
+    it.each([
+      ['2026-01-31', '2025-06-30', '2024-11-30'],
+      ['2024-11-30', '2026-01-31', '2025-06-30'],
+      ['2025-06-30', '2024-11-30', '2026-01-31'],
+    ])(
+      'starts yearly history at the earliest snapshot (%s, %s, %s)',
+      async (...dates: string[]) => {
+        snapshotsService.findByUserId.mockResolvedValue(
+          dates.map((date, index) => ({
+            accountId: index === 0 ? rubId : usdId,
+            date: new Date(date),
+          })),
+        );
+        const result = await service.findYearly(userId, {});
+        expect(result.map(({ period }) => period)).toEqual([
+          '2024',
+          '2025',
+          '2026',
+        ]);
+        expect(result[1].currencies).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              currency: 'RUB',
+              incomes: 0,
+              expenses: 0,
+            }),
+          ]),
+        );
+        expect(transactions.aggregate).toHaveBeenCalledWith(
+          expect.arrayContaining([
+            expect.objectContaining({
+              $match: expect.objectContaining({
+                transactionDate: expect.objectContaining({
+                  $gte: new Date('2024-01-01'),
+                }),
+              }),
+            }),
+          ]),
+        );
+      },
+    );
+
+    it.each([
+      [{}, ['2025-11', '2025-12', '2026-01', '2026-02']],
+      [{ toDate: '2025-12-31' }, ['2025-11', '2025-12']],
+      [
+        { fromDate: '2025-03-01', toDate: '2025-04-30' },
+        ['2025-03', '2025-04'],
+      ],
+      [{ fromDate: '2025-04-01', toDate: '2025-03-31' }, []],
+    ])('uses the correct monthly range for %j', async (query, expected) => {
+      snapshotsService.findByUserId.mockResolvedValue([
+        { accountId: rubId, date: new Date('2026-01-31') },
+        { accountId: usdId, date: new Date('2025-11-30') },
+      ]);
+      expect(
+        (await service.findMonthly(userId, query)).map(({ period }) => period),
+      ).toEqual(expected);
+    });
+
+    it('returns no default history without snapshots but honors explicit monthly dates', async () => {
+      snapshotsService.findByUserId.mockResolvedValue([]);
+      expect(await service.findYearly(userId, {})).toEqual([]);
+      expect(await service.findMonthly(userId, {})).toEqual([]);
+      const result = await service.findMonthly(userId, {
+        fromDate: '2025-03-01',
+        toDate: '2025-03-31',
+      });
+      expect(result.map(({ period }) => period)).toEqual(['2025-03']);
+      expect(result[0].currencies).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ balance: 0, saving: 0 }),
+        ]),
+      );
+    });
+  });
+
   it('keeps RUB and USD totals separate and does not recognize conversion as income', async () => {
     transactions.aggregate
       .mockResolvedValueOnce([

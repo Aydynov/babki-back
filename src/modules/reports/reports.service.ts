@@ -6,7 +6,6 @@ import {
   endOfYear,
   isAfter,
   startOfMonth,
-  startOfYear,
 } from 'date-fns';
 import { format } from 'date-fns/format';
 import { Model, Types } from 'mongoose';
@@ -350,10 +349,11 @@ export class ReportsService {
   }
   private async firstSnapshot(userId: string) {
     const snapshots = await this.snapshotsService.findByUserId(userId);
-    const first = snapshots[0]?.date ?? null;
-    if (!first) return null;
-    const yearStart = startOfYear(new Date());
-    return isAfter(yearStart, first) ? yearStart : first;
+    return snapshots.reduce<Date | null>(
+      (first, snapshot) =>
+        !first || isAfter(first, snapshot.date) ? snapshot.date : first,
+      null,
+    );
   }
   private monthPeriods(start: Date, end: Date) {
     const result: Period[] = [];
