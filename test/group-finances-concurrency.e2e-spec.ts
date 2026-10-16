@@ -158,6 +158,64 @@ describe('Group finance concurrent transactions (real replica set)', () => {
     }
   }
 
+  it.each(['revoke', 'leave', 'exclude', 'ownership'] as const)(
+    'serializes %s against delegated correction of another author expense',
+    async (action) => {
+      for (const first of [true, false]) {
+        // Use a fresh third-party expense for each ordering. Restore membership
+        // and ownership after each round so both orders exercise the same actor.
+        const id = idOf(await expense(2, 2).expect(201));
+        await api(
+          'patch',
+          `${base()}/members/${harness.users[1].id}/permissions`,
+          0,
+          { manageTransactions: true },
+        ).expect(200);
+        const change = () =>
+          api('patch', `${base()}/expenses/${id}`, 1, { amount: 20 });
+        const transition = () =>
+          action === 'revoke'
+            ? api(
+                'patch',
+                `${base()}/members/${harness.users[1].id}/permissions`,
+                0,
+                { manageTransactions: false },
+              )
+            : action === 'leave'
+              ? api('post', `${base()}/leave`, 1)
+              : action === 'exclude'
+                ? remove(1)
+                : // Transfer to the delegate, making the former owner lose rights;
+                  // the new owner retains authority regardless of the old delegation.
+                  transfer();
+        const responses = await race(
+          first ? transition : change,
+          first ? change : transition,
+        );
+        const status = action === 'leave' || action === 'exclude' ? 204 : 200;
+        const denied =
+          action === 'revoke' ? 403 : action === 'ownership' ? 200 : 404;
+        expect(responses.map((r) => r.status)).toEqual(
+          first ? [status, denied] : [200, status],
+        );
+        const row = await collection('transactions').findOne({ _id: oid(id) });
+        expect(row?.amount).toBe(first && action !== 'ownership' ? 10 : 20);
+        if (action === 'leave' || action === 'exclude') {
+          const invitation = await api('post', `${base()}/invitations`).expect(
+            201,
+          );
+          await api('post', '/group-invitations/accept', 1, {
+            token: (invitation.body as { token: string }).token,
+          }).expect(200);
+        } else if (action === 'ownership') {
+          await api('post', `${base()}/ownership`, 1, {
+            userId: harness.users[0].id,
+          }).expect(200);
+        }
+      }
+      await checkBalance(action === 'ownership' ? -40 : -30);
+    },
+  );
   it.each([true, false])(
     'serializes revocation against category creation (revoke first: %s)',
     async (first) => {

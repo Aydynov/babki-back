@@ -5,6 +5,8 @@ import { TransactionsService } from '../../transactions/transactions/transaction
 import { UsersService } from '../../users/users.service';
 import { AccountDocument } from '../schemas/accounts.schema';
 import { AccountsService } from './accounts.service';
+import { BudgetWriteService } from '../../budgets/budget-write.service';
+import { GroupsAccessService } from '../../groups/groups-access.service';
 
 describe('AccountsService deletion lifecycle', () => {
   const userId = '507f1f77bcf86cd799439011';
@@ -21,12 +23,12 @@ describe('AccountsService deletion lifecycle', () => {
     updateOne: jest.fn(),
   };
   const snapshots = {
-    create: jest.fn(),
-    deleteAllByAccountId: jest.fn(),
+    openingForBudget: jest.fn(),
+    deleteForBudget: jest.fn(),
   };
   const transactions = {
     lockAccounts: jest.fn(),
-    hasHistoryByAccountId: jest.fn(),
+    hasHistoryForBudget: jest.fn(),
     deleteAllByAccountId: jest.fn(),
   };
   const users = {
@@ -39,9 +41,12 @@ describe('AccountsService deletion lifecycle', () => {
     users as unknown as UsersService,
     snapshots as unknown as AccountsSnapshotsService,
     transactions as unknown as TransactionsService,
-    {
-      startSession: jest.fn().mockResolvedValue(session),
-    } as unknown as Connection,
+    new BudgetWriteService(
+      {
+        startSession: jest.fn().mockResolvedValue(session),
+      } as unknown as Connection,
+      {} as GroupsAccessService,
+    ),
   );
 
   function foundAccount(
@@ -89,7 +94,7 @@ describe('AccountsService deletion lifecycle', () => {
         }),
       },
     ]);
-    snapshots.create.mockResolvedValue({ amount: 10 });
+    snapshots.openingForBudget.mockResolvedValue({ amount: 10 });
 
     await service.create(userId, {
       name: 'Travel',
@@ -111,13 +116,13 @@ describe('AccountsService deletion lifecycle', () => {
     'rejects deleting a %s account with transaction history without changing snapshots',
     async (type) => {
       foundAccount(type);
-      transactions.hasHistoryByAccountId.mockResolvedValue(true);
+      transactions.hasHistoryForBudget.mockResolvedValue(true);
 
       await expect(
         service.deleteEntity(userId, accountId),
       ).rejects.toBeInstanceOf(ConflictException);
 
-      expect(snapshots.deleteAllByAccountId).not.toHaveBeenCalled();
+      expect(snapshots.deleteForBudget).not.toHaveBeenCalled();
       expect(accountModel.findOneAndDelete).not.toHaveBeenCalled();
       expect(transactions.deleteAllByAccountId).not.toHaveBeenCalled();
     },
@@ -130,18 +135,22 @@ describe('AccountsService deletion lifecycle', () => {
       service.deleteEntity(userId, accountId),
     ).rejects.toBeInstanceOf(ConflictException);
 
-    expect(transactions.hasHistoryByAccountId).not.toHaveBeenCalled();
-    expect(snapshots.deleteAllByAccountId).not.toHaveBeenCalled();
+    expect(transactions.hasHistoryForBudget).not.toHaveBeenCalled();
+    expect(snapshots.deleteForBudget).not.toHaveBeenCalled();
   });
 
   it('deletes only snapshots with an unused zero-balance account', async () => {
     foundAccount('balance');
-    transactions.hasHistoryByAccountId.mockResolvedValue(false);
+    transactions.hasHistoryForBudget.mockResolvedValue(false);
 
     await service.deleteEntity(userId, accountId);
 
-    expect(snapshots.deleteAllByAccountId).toHaveBeenCalledWith(
-      userId,
+    expect(snapshots.deleteForBudget).toHaveBeenCalledWith(
+      {
+        userId: new Types.ObjectId(userId),
+        ownerType: 'user',
+        ownerId: new Types.ObjectId(userId),
+      },
       accountId,
       session,
     );

@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { BudgetsModule } from '../budgets/budgets.module';
 import { MongooseModule } from '@nestjs/mongoose';
 import { AccountsSnapshotsModule } from '../accounts-snapshots/accounts-snapshots.module';
 import { Account, AccountsSchema } from '../accounts/schemas/accounts.schema';
@@ -22,6 +23,7 @@ import { Transaction, TransactionSchema } from './schemas/transaction.schema';
 
 @Module({
   imports: [
+    BudgetsModule,
     AccountsSnapshotsModule,
     MongooseModule.forFeature([
       { name: Account.name, schema: AccountsSchema },

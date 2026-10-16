@@ -3,6 +3,7 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { AccountsSnapshotsModule } from '../accounts-snapshots/accounts-snapshots.module';
 import { TransactionsModule } from '../transactions/transactions.module';
 import { UsersModule } from '../users/users.module';
+import { BudgetsModule } from '../budgets/budgets.module';
 import { Account, AccountsSchema } from './schemas/accounts.schema';
 import { AccountsController } from './accounts/accounts.controller';
 import { AccountsService } from './accounts/accounts.service';
@@ -12,6 +13,7 @@ import { Saving, SavingsSchema } from './schemas/savings.schema';
 @Module({
   imports: [
     UsersModule,
+    BudgetsModule,
     AccountsSnapshotsModule,
     TransactionsModule,
     MongooseModule.forFeature([

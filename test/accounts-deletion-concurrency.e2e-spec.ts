@@ -36,6 +36,7 @@ describe('Personal account deletion (real MongoDB replica set)', () => {
           name: `Balance-${Date.now()}-${Math.random()}`,
           type: 'balance',
           currency: 'USD',
+          openedAt: date,
           amount,
         })
         .expect(201),
@@ -49,6 +50,7 @@ describe('Personal account deletion (real MongoDB replica set)', () => {
           name: `Saving-${Date.now()}-${Math.random()}`,
           type: 'saving',
           currency: 'USD',
+          openedAt: date,
           amount,
         })
         .expect(201),

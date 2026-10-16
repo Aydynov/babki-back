@@ -1,306 +1,199 @@
-import { NotFoundException } from '@nestjs/common';
-import { getConnectionToken, getModelToken } from '@nestjs/mongoose';
-import { Test } from '@nestjs/testing';
-import { ClientSession, Types } from 'mongoose';
+import {
+  BadRequestException,
+  ConflictException,
+  NotFoundException,
+} from '@nestjs/common';
+import { ClientSession, Model, Types } from 'mongoose';
+import { personalBudget } from 'src/common/utils/personal-budget.util';
 import { AccountsSnapshotsService } from '../../accounts-snapshots/accounts-snapshots.service';
-import { ExpenseCategory } from '../../expense-categories/schemas/expense-category.schema';
+import { ExpenseCategoryDocument } from '../../expense-categories/schemas/expense-category.schema';
 import { TransactionsService } from '../transactions/transactions.service';
-import { CreateExpenseDto } from './dto/create-expense.dto';
+import { ExpenseDocument } from '../schemas/expense.schema';
 import { ExpensesService } from './expenses.service';
-import { Expense } from '../schemas/expense.schema';
 
-describe('ExpensesService', () => {
+describe('ExpensesService shared budget operations', () => {
   const userId = '507f1f77bcf86cd799439011';
-  const accountId = '507f1f77bcf86cd799439012';
-  const categoryId = '507f1f77bcf86cd799439013';
-  const snapshotId = '507f1f77bcf86cd799439014';
-
-  const createExpenseDto: CreateExpenseDto = {
-    accountId,
-    categoryId,
+  const budget = personalBudget(userId);
+  const accountId = new Types.ObjectId('507f1f77bcf86cd799439012');
+  const categoryId = new Types.ObjectId('507f1f77bcf86cd799439013');
+  const snapshotId = new Types.ObjectId('507f1f77bcf86cd799439014');
+  const account = { ...budget, _id: accountId, currency: 'USD' };
+  const session = {} as ClientSession;
+  const dto = {
+    accountId: accountId.toString(),
+    categoryId: categoryId.toString(),
     amount: 100,
     transactionDate: '2026-06-01',
     description: 'Test expense',
   };
-
-  const mockConnection = { startSession: jest.fn() };
-  const expenseModel = {
-    create: jest.fn(),
-    find: jest.fn(),
-    findOne: jest.fn(),
-    findOneAndUpdate: jest.fn(),
-    countDocuments: jest.fn(),
-  };
-  const expenseCategoryModel = {
-    exists: jest.fn(),
-    findOneAndUpdate: jest.fn(),
-  };
-  const transactionsService = {
+  const model = { create: jest.fn(), countDocuments: jest.fn() };
+  const category = { findOneAndUpdate: jest.fn() };
+  const snapshots = { prepareForBudget: jest.fn(), applyForBudget: jest.fn() };
+  const transactions = {
+    runForBudget: jest.fn(),
+    accountForCreate: jest.fn(),
+    lockAccountsForBudget: jest.fn(),
     ensureUserExists: jest.fn(),
-    resolveActiveAccount: jest.fn(),
-    lockAccounts: jest.fn(),
+    findAllForBudget: jest.fn(),
+    findOneForBudget: jest.fn(),
+    updateForBudget: jest.fn(),
     buildFilter: jest.fn(),
   };
-  const snapshotsService = {
-    findOrCreateByAccountId: jest.fn(),
-    recalculateSnapshotsFromDate: jest.fn(),
-  };
+  const service = new ExpensesService(
+    model as unknown as Model<ExpenseDocument>,
+    category as unknown as Model<ExpenseCategoryDocument>,
+    snapshots as unknown as AccountsSnapshotsService,
+    transactions as unknown as TransactionsService,
+  );
 
-  let service: ExpensesService;
-
-  beforeEach(async () => {
+  beforeEach(() => {
     jest.clearAllMocks();
-
-    const moduleRef = await Test.createTestingModule({
-      providers: [
-        ExpensesService,
-        { provide: getModelToken(Expense.name), useValue: expenseModel },
-        {
-          provide: getModelToken(ExpenseCategory.name),
-          useValue: expenseCategoryModel,
-        },
-        { provide: TransactionsService, useValue: transactionsService },
-        { provide: AccountsSnapshotsService, useValue: snapshotsService },
-        { provide: getConnectionToken(), useValue: mockConnection },
-      ],
-    }).compile();
-
-    service = moduleRef.get(ExpensesService);
-    transactionsService.resolveActiveAccount.mockResolvedValue({
-      userId: new Types.ObjectId(userId),
-      ownerType: 'user',
-      ownerId: new Types.ObjectId(userId),
-      account: { _id: new Types.ObjectId(accountId), currency: 'USD' },
-    });
-    expenseCategoryModel.findOneAndUpdate.mockReturnValue({
+    transactions.runForBudget.mockImplementation(
+      (
+        _budget,
+        _actor,
+        work: (s: ClientSession) => Promise<unknown>,
+        supplied?: ClientSession,
+      ) => work(supplied ?? session),
+    );
+    transactions.accountForCreate.mockResolvedValue(account);
+    transactions.ensureUserExists.mockResolvedValue(budget);
+    category.findOneAndUpdate.mockReturnValue({
       lean: () => ({
-        exec: async () => ({
-          _id: new Types.ObjectId(categoryId),
-          isArchived: false,
-        }),
+        exec: async () => ({ _id: categoryId, isArchived: false }),
       }),
     });
-    transactionsService.buildFilter.mockReturnValue({
-      ownerType: 'user',
-      ownerId: new Types.ObjectId(userId),
-      deletedAt: null,
+    snapshots.prepareForBudget.mockResolvedValue({
+      _id: snapshotId,
+      accountId,
     });
-  });
-
-  it('uses a provided session directly without creating a new one', async () => {
-    const externalSession = {} as ClientSession;
-
-    transactionsService.ensureUserExists.mockResolvedValue({
-      userId: new Types.ObjectId(userId),
-      accountId: new Types.ObjectId(accountId),
-    });
-    expenseCategoryModel.exists.mockReturnValue({
-      session: jest
-        .fn()
-        .mockResolvedValue({ _id: new Types.ObjectId(categoryId) }),
-    });
-    snapshotsService.findOrCreateByAccountId.mockResolvedValue({
-      _id: new Types.ObjectId(snapshotId),
-      accountId: new Types.ObjectId(accountId),
-    });
-    snapshotsService.recalculateSnapshotsFromDate.mockResolvedValue(undefined);
-
-    const mockPopulate = jest
-      .fn()
-      .mockResolvedValue({ _id: new Types.ObjectId() });
-    expenseModel.create.mockResolvedValue([
-      { _id: new Types.ObjectId(), populate: mockPopulate },
-    ]);
-
-    await service.create(userId, createExpenseDto, externalSession);
-
-    expect(mockConnection.startSession).not.toHaveBeenCalled();
-    expect(expenseModel.create).toHaveBeenCalledWith(expect.any(Array), {
-      session: externalSession,
-    });
-  });
-
-  it('uses the indexed stable order for expense pagination', async () => {
-    transactionsService.ensureUserExists.mockResolvedValue({
-      userId: new Types.ObjectId(userId),
-      accountId: new Types.ObjectId(accountId),
-    });
-    const exec = jest.fn().mockResolvedValue([]);
-    const lean = jest.fn().mockReturnValue({ exec });
-    const populate = jest.fn().mockReturnValue({ lean });
-    const limit = jest.fn().mockReturnValue({ populate });
-    const skip = jest.fn().mockReturnValue({ limit });
-    const sort = jest.fn().mockReturnValue({ skip });
-    expenseModel.find.mockReturnValue({ sort });
-    expenseModel.countDocuments.mockResolvedValue(0);
-
-    await service.findAll(userId, { page: 1, limit: 20 });
-
-    expect(sort).toHaveBeenCalledWith({ transactionDate: -1, _id: -1 });
-  });
-
-  it('persists an internal transaction origin', async () => {
-    const externalSession = {} as ClientSession;
-    const origin = {
-      type: 'plan' as const,
-      id: new Types.ObjectId('507f1f77bcf86cd799439015'),
+    const row = {
+      _id: new Types.ObjectId(),
+      ...budget,
+      category: { _id: categoryId },
+      amount: 100,
     };
-
-    transactionsService.ensureUserExists.mockResolvedValue({
-      userId: new Types.ObjectId(userId),
-      accountId: new Types.ObjectId(accountId),
-    });
-    expenseCategoryModel.exists.mockReturnValue({
-      session: jest
-        .fn()
-        .mockResolvedValue({ _id: new Types.ObjectId(categoryId) }),
-    });
-    snapshotsService.findOrCreateByAccountId.mockResolvedValue({
-      _id: new Types.ObjectId(snapshotId),
-      accountId: new Types.ObjectId(accountId),
-    });
-    expenseModel.create.mockResolvedValue([
-      {
-        populate: jest.fn().mockResolvedValue({ _id: new Types.ObjectId() }),
-      },
+    model.create.mockResolvedValue([
+      { populate: async () => ({ toObject: () => row }), toObject: () => row },
     ]);
+    transactions.buildFilter.mockReturnValue({ ...budget, deletedAt: null });
+  });
 
-    await service.create(userId, createExpenseDto, externalSession, origin);
+  it('passes a supplied session and origin through creation, category lock, and snapshot effect', async () => {
+    const origin = { type: 'plan' as const, id: new Types.ObjectId() };
+    const result = await service.create(userId, dto, session, origin);
+    expect(transactions.runForBudget).toHaveBeenCalledWith(
+      budget,
+      userId,
+      expect.any(Function),
+      session,
+    );
+    expect(category.findOneAndUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ ownerType: 'user', ownerId: budget.ownerId }),
+      expect.any(Object),
+      expect.objectContaining({ session }),
+    );
+    expect(model.create).toHaveBeenCalledWith(
+      [
+        expect.objectContaining({
+          origin,
+          createdBy: budget.ownerId,
+          participantId: budget.ownerId,
+          currency: 'USD',
+        }),
+      ],
+      { session },
+    );
+    expect(snapshots.applyForBudget).toHaveBeenCalledWith(
+      account,
+      new Date(dto.transactionDate),
+      -100,
+      session,
+    );
+    expect(result).not.toHaveProperty('ownerId');
+  });
 
-    expect(expenseModel.create).toHaveBeenCalledWith(
-      [expect.objectContaining({ origin })],
-      { session: externalSession },
+  it('rejects currency precision before creating history', async () => {
+    await expect(
+      service.create(userId, { ...dto, amount: 0.001 }, session),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(model.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects archived new category assignments', async () => {
+    category.findOneAndUpdate.mockReturnValue({
+      lean: () => ({
+        exec: async () => ({ _id: categoryId, isArchived: true }),
+      }),
+    });
+    await expect(service.create(userId, dto, session)).rejects.toBeInstanceOf(
+      ConflictException,
+    );
+    expect(model.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects missing snapshots before creating history', async () => {
+    snapshots.prepareForBudget.mockResolvedValue(null);
+    await expect(service.create(userId, dto, session)).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
+    expect(model.create).not.toHaveBeenCalled();
+  });
+
+  it('delegates populated personal pagination to the common reader', async () => {
+    transactions.findAllForBudget.mockResolvedValue({
+      items: [],
+      total: 0,
+      page: 1,
+      limit: 20,
+    });
+    await expect(
+      service.findAll(userId, { page: 1, limit: 20 }),
+    ).resolves.toMatchObject({ items: [], total: 0 });
+    expect(transactions.findAllForBudget).toHaveBeenCalledWith(
+      budget,
+      { page: 1, limit: 20 },
+      undefined,
+      model,
+      true,
     );
   });
 
-  it('creates its own session when none is provided', async () => {
-    const mockSession = {
-      withTransaction: jest.fn().mockImplementation(async (fn) => fn()),
-      endSession: jest.fn().mockResolvedValue(undefined),
+  it('passes updates through the common writer in the active session', async () => {
+    const row = {
+      _id: new Types.ObjectId(),
+      ...budget,
+      accountId,
+      amount: 100,
+      currency: 'USD',
+      type: 'expense',
+      transactionDate: new Date(dto.transactionDate),
     };
-    mockConnection.startSession.mockResolvedValue(mockSession);
-
-    transactionsService.ensureUserExists.mockResolvedValue({
-      userId: new Types.ObjectId(userId),
-      accountId: new Types.ObjectId(accountId),
-    });
-    expenseCategoryModel.exists.mockReturnValue({
-      session: jest
-        .fn()
-        .mockResolvedValue({ _id: new Types.ObjectId(categoryId) }),
-    });
-    snapshotsService.findOrCreateByAccountId.mockResolvedValue({
-      _id: new Types.ObjectId(snapshotId),
-      accountId: new Types.ObjectId(accountId),
-    });
-    snapshotsService.recalculateSnapshotsFromDate.mockResolvedValue(undefined);
-
-    const mockPopulate = jest
-      .fn()
-      .mockResolvedValue({ _id: new Types.ObjectId() });
-    expenseModel.create.mockResolvedValue([
-      { _id: new Types.ObjectId(), populate: mockPopulate },
-    ]);
-
-    await service.create(userId, createExpenseDto);
-
-    expect(mockConnection.startSession).toHaveBeenCalled();
-    expect(mockSession.withTransaction).toHaveBeenCalled();
-    expect(mockSession.endSession).toHaveBeenCalled();
+    transactions.findOneForBudget.mockResolvedValue(row);
+    transactions.updateForBudget.mockResolvedValue({ ...row, amount: 200 });
+    await service.update(userId, row._id.toString(), { amount: 200 });
+    expect(transactions.updateForBudget).toHaveBeenCalledWith(
+      budget,
+      row,
+      { amount: 200 },
+      session,
+      model,
+      true,
+      undefined,
+    );
   });
 
-  it('throws NotFoundException when snapshot is not found', async () => {
-    const externalSession = {} as ClientSession;
-
-    transactionsService.ensureUserExists.mockResolvedValue({
-      userId: new Types.ObjectId(userId),
-      accountId: new Types.ObjectId(accountId),
+  it('includes deleted financial history only for dependency checks', async () => {
+    model.countDocuments.mockResolvedValue(1);
+    await service.countByFilters(userId, { categoryId: categoryId.toString() });
+    await service.countHistoryByFilters(userId, {
+      categoryId: categoryId.toString(),
     });
-    expenseCategoryModel.exists.mockReturnValue({
-      session: jest
-        .fn()
-        .mockResolvedValue({ _id: new Types.ObjectId(categoryId) }),
-    });
-    snapshotsService.findOrCreateByAccountId.mockResolvedValue(null);
-
-    await expect(
-      service.create(userId, createExpenseDto, externalSession),
-    ).rejects.toBeInstanceOf(NotFoundException);
-
-    expect(expenseModel.create).not.toHaveBeenCalled();
-  });
-
-  describe('update', () => {
-    it('passes its internal session to both snapshot recalculation and findOneAndUpdate', async () => {
-      const expenseId = '507f1f77bcf86cd799439015';
-      const mockInternalSession = {
-        withTransaction: jest.fn().mockImplementation(async (fn) => fn()),
-        endSession: jest.fn().mockResolvedValue(undefined),
-      };
-      mockConnection.startSession.mockResolvedValue(mockInternalSession);
-
-      transactionsService.ensureUserExists.mockResolvedValue({
-        userId: new Types.ObjectId(userId),
-        accountId: new Types.ObjectId(accountId),
-      });
-
-      const existingExpense = {
-        _id: new Types.ObjectId(expenseId),
-        userId: new Types.ObjectId(userId),
-        accountId: new Types.ObjectId(accountId),
-        amount: 100,
-        currency: 'USD',
-        transactionDate: new Date('2026-06-01'),
-      };
-
-      // findOne chain (used internally by update)
-      const findOneLean = jest.fn().mockResolvedValue(existingExpense);
-      const findOnePopulate = jest.fn().mockReturnValue({
-        session: jest.fn().mockReturnValue({ lean: findOneLean }),
-      });
-      expenseModel.findOne.mockReturnValue({ populate: findOnePopulate });
-
-      const updatedExpense = { ...existingExpense, amount: 200 };
-      const updateLean = jest.fn().mockResolvedValue(updatedExpense);
-      const updatePopulate = jest.fn().mockReturnValue({ lean: updateLean });
-      expenseModel.findOneAndUpdate.mockReturnValue({
-        populate: updatePopulate,
-      });
-
-      snapshotsService.recalculateSnapshotsFromDate.mockResolvedValue(
-        undefined,
-      );
-
-      await service.update(userId, expenseId, { amount: 200 });
-
-      expect(
-        snapshotsService.recalculateSnapshotsFromDate,
-      ).toHaveBeenCalledWith(
-        userId,
-        existingExpense.accountId.toString(),
-        expect.any(Object),
-        { amount: -100 },
-        mockInternalSession,
-      );
-      expect(expenseModel.findOneAndUpdate).toHaveBeenCalledWith(
-        expect.objectContaining({ deletedAt: null }),
-        expect.any(Object),
-        expect.objectContaining({ session: mockInternalSession }),
-      );
-    });
-  });
-
-  it('uses the active filter for normal counts but not dependency history', async () => {
-    expenseModel.countDocuments.mockResolvedValue(1);
-
-    await service.countByFilters(userId, { categoryId });
-    await service.countHistoryByFilters(userId, { categoryId });
-
-    expect(expenseModel.countDocuments).toHaveBeenNthCalledWith(
+    expect(model.countDocuments).toHaveBeenNthCalledWith(
       1,
       expect.objectContaining({ deletedAt: null }),
     );
-    expect(expenseModel.countDocuments.mock.calls[1][0]).not.toHaveProperty(
+    expect(model.countDocuments.mock.calls[1][0]).not.toHaveProperty(
       'deletedAt',
     );
   });

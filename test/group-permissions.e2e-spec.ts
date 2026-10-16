@@ -7,11 +7,13 @@ const none = {
   manageAccounts: false,
   manageCategories: false,
   manageLimits: false,
+  manageTransactions: false,
 };
 const all = {
   manageAccounts: true,
   manageCategories: true,
   manageLimits: true,
+  manageTransactions: true,
 };
 describe('Group financial permissions', () => {
   let ctx: Awaited<ReturnType<typeof startGroupsTestApp>>;
@@ -54,6 +56,104 @@ describe('Group financial permissions', () => {
       actor,
     ).send(body as object);
   }
+  it('returns current permissions in every group response without a member directory lookup', async () => {
+    const created = await api('post', '/groups')
+      .send({ name: 'Context', type: 'family' })
+      .expect(201);
+    expect((created.body as { permissions: unknown }).permissions).toEqual(all);
+    await join(2);
+    const firstPage = await api(
+      'get',
+      `/groups/${id}/members?limit=1`,
+      2,
+    ).expect(200);
+    expect(
+      (firstPage.body as { items: { userId: string }[] }).items[0].userId,
+    ).not.toBe(ctx.users[2].id);
+    expect(
+      (await api('get', `/groups/${id}`, 2).expect(200)).body,
+    ).toMatchObject({ role: 'member', permissions: none });
+    await patch({ manageTransactions: true }, 0, 2).expect(200);
+    const list = (await api('get', '/groups', 2).expect(200)).body as {
+      items: { id: string; permissions: unknown }[];
+    };
+    expect(list.items.find((g) => g.id === id)?.permissions).toEqual({
+      ...none,
+      manageTransactions: true,
+    });
+    expect(
+      (
+        await api('patch', `/groups/${id}`)
+          .send({ name: 'Updated' })
+          .expect(200)
+      ).body,
+    ).toMatchObject({ permissions: all });
+    expect(
+      (
+        await api('post', `/groups/${id}/ownership`)
+          .send({ userId: ctx.users[2].id })
+          .expect(200)
+      ).body,
+    ).toMatchObject({ role: 'member', permissions: none });
+    expect(
+      (await api('get', `/groups/${id}`, 2).expect(200)).body,
+    ).toMatchObject({ role: 'owner', permissions: all });
+    const event = await ctx.connection
+      .collection('groupmembershipevents')
+      .findOne({
+        groupId: new Types.ObjectId(id),
+        kind: 'ownership-transferred',
+      });
+    expect(event?.permissionResets).toEqual([
+      {
+        userId: new Types.ObjectId(ctx.users[0].id),
+        before: none,
+        after: none,
+      },
+      {
+        userId: new Types.ObjectId(ctx.users[2].id),
+        before: { ...none, manageTransactions: true },
+        after: none,
+      },
+    ]);
+  });
+  it('treats a stored legacy membership as denied and audits only later changes', async () => {
+    await ctx.connection.collection('groupmemberships').updateOne(
+      {
+        groupId: new Types.ObjectId(id),
+        userId: new Types.ObjectId(ctx.users[1].id),
+      },
+      {
+        $set: {
+          permissions: {
+            manageAccounts: true,
+            manageCategories: false,
+            manageLimits: false,
+          },
+        },
+      },
+    );
+    expect(
+      (await api('get', `/groups/${id}`, 1).expect(200)).body,
+    ).toMatchObject({ permissions: { ...none, manageAccounts: true } });
+    await patch({ manageTransactions: true }).expect(200);
+    const event = await ctx.connection
+      .collection('groupmembershipevents')
+      .findOne({
+        groupId: new Types.ObjectId(id),
+        kind: 'permissions-updated',
+      });
+    expect(event?.before).toEqual({ ...none, manageAccounts: true });
+    expect(event?.after).toEqual({
+      ...none,
+      manageAccounts: true,
+      manageTransactions: true,
+    });
+    await patch({ manageTransactions: false }).expect(200);
+    expect(
+      (await api('get', `/groups/${id}`, 1).expect(200)).body,
+    ).toMatchObject({ permissions: { ...none, manageAccounts: true } });
+  });
   it('delegates independently, preserves omitted rights, audits and exposes effective permissions', async () => {
     expect((await patch({ manageCategories: true }).expect(200)).body).toEqual({
       ...none,
@@ -122,6 +222,9 @@ describe('Group financial permissions', () => {
       { manageAccounts: 'false' },
       { manageAccounts: 1 },
       { unknown: true },
+      { manageTransactions: null },
+      { manageTransactions: 'true' },
+      { manageTransactions: 1 },
     ])
       await patch(body).expect(400);
     await patch({ manageAccounts: true }, 1).expect(403);

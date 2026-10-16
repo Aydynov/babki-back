@@ -7,10 +7,12 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { InjectConnection, InjectModel } from '@nestjs/mongoose';
-import { ClientSession, Connection, Model, Types } from 'mongoose';
+import { InjectModel } from '@nestjs/mongoose';
+import { ClientSession, Model, Types } from 'mongoose';
 import { getPagination } from 'src/common/utils/pagination.util';
 import { normalizeMoney } from 'src/common/money/money';
+import { BudgetContext, budgetFilter } from 'src/common/budget/budget-context';
+import { BudgetWriteService } from '../../budgets/budget-write.service';
 import {
   Account,
   AccountDocument,
@@ -25,6 +27,26 @@ import {
 } from '../schemas/transaction.schema';
 import { activeTransactionFilter } from './active-transaction.filter';
 
+export type FinancialTransaction = Transaction & {
+  _id: Types.ObjectId;
+  category?: Types.ObjectId;
+  participantId?: Types.ObjectId;
+};
+export type BudgetTransactionQuery = ListTransactionsQueryDto & {
+  categoryId?: string;
+  participantId?: string;
+  currency?: string;
+};
+export type FinancialChanges = {
+  amount?: number;
+  description?: string;
+  source?: string;
+  merchant?: string;
+  items?: { name: string; price: number; quantity: number }[];
+  category?: Types.ObjectId;
+  participantId?: Types.ObjectId;
+};
+
 @Injectable()
 export class TransactionsService {
   constructor(
@@ -35,30 +57,53 @@ export class TransactionsService {
     @InjectModel(Account.name)
     private readonly accountModel: Model<AccountDocument>,
     private readonly snapshotService: AccountsSnapshotsService,
-    @InjectConnection() private readonly connection: Connection,
+    private readonly write: BudgetWriteService,
   ) {}
+
+  runForBudget<T>(
+    budget: BudgetContext,
+    actorId: string,
+    work: (session: ClientSession) => Promise<T>,
+    session?: ClientSession,
+  ) {
+    // Existing plans/debts own the supplied personal session and already passed access.
+    if (session && budget.ownerType === 'user') return work(session);
+    return this.write.run(budget, actorId, work, undefined, session);
+  }
 
   async findAll(
     userId: string,
     query: ListTransactionsQueryDto,
     model: Model<Transaction> = this.transactionModel,
   ) {
-    const foundIds = await this.ensureUserExists(userId);
-    const { page, limit, skip } = getPagination(query);
-    const filter = this.buildFilter(foundIds.userId, query);
+    const budget = await this.ensureUserExists(userId);
+    const result = await this.findAllForBudget(budget, query, undefined, model);
+    return { ...result, items: result.items.map(personalResponse) };
+  }
 
+  async findAllForBudget(
+    budget: BudgetContext,
+    query: BudgetTransactionQuery,
+    kind?: TransactionType,
+    model: Model<Transaction> = this.transactionModel,
+    populateCategory = false,
+  ) {
+    const { page, limit, skip } = getPagination(query);
+    const filter = this.buildFilterForBudget(budget, {
+      ...query,
+      ...(kind ? { transactionType: kind } : {}),
+    });
+    const lookup = model
+      .find(filter)
+      .sort({ transactionDate: -1, _id: -1 })
+      .skip(skip)
+      .limit(limit);
+    if (populateCategory) lookup.populate('category');
     const [items, total] = await Promise.all([
-      model
-        .find(filter)
-        .sort({ transactionDate: -1, _id: -1 })
-        .skip(skip)
-        .limit(limit)
-        .lean()
-        .exec(),
+      lookup.lean().exec(),
       model.countDocuments(filter),
     ]);
-
-    return { items: items.map(personalResponse), total, page, limit };
+    return { items, total, page, limit };
   }
 
   async findOne(
@@ -67,23 +112,43 @@ export class TransactionsService {
     model: Model<Transaction> = this.transactionModel,
     session?: ClientSession,
   ) {
-    const accountTransaction = await model
-      .findOne({
-        _id: transactionId,
-        ...personalBudget(new Types.ObjectId(userId)),
-        ...activeTransactionFilter,
-      })
+    return personalResponse(
+      await this.findOneForBudget(
+        personalBudget(userId),
+        transactionId,
+        undefined,
+        session,
+        model,
+      ),
+    );
+  }
+
+  async findOneForBudget(
+    budget: BudgetContext,
+    transactionId: string,
+    kind?: TransactionType,
+    session?: ClientSession,
+    model: Model<Transaction> = this.transactionModel,
+    populateCategory = false,
+  ) {
+    const lookup = model.findOne({
+      _id: transactionId,
+      ...budgetFilter(budget),
+      ...activeTransactionFilter,
+      ...(kind ? { type: kind } : {}),
+    });
+    if (populateCategory) lookup.populate('category');
+    const row = await lookup
       .session(session ?? null)
-      .lean()
+      .lean<FinancialTransaction>()
       .exec();
-
-    if (!accountTransaction) {
+    if (!row)
       throw new NotFoundException(
-        `Transaction ${transactionId} for user ${userId} not found.`,
+        budget.ownerType === 'group'
+          ? 'Transaction not found'
+          : `${populateCategory ? 'Expense' : 'Transaction'} ${transactionId} for user ${budget.ownerId.toString()} not found.`,
       );
-    }
-
-    return personalResponse(accountTransaction);
+    return row;
   }
 
   async findRevenue(
@@ -91,9 +156,20 @@ export class TransactionsService {
     query: ListTransactionsQueryDto,
     model: Model<Transaction> = this.transactionModel,
   ) {
-    const foundIds = await this.ensureUserExists(userId);
-    const filter = this.buildFilter(foundIds.userId, query);
+    const budget = await this.ensureUserExists(userId);
+    return this.findRevenueForBudget(budget, query, undefined, model);
+  }
 
+  async findRevenueForBudget(
+    budget: BudgetContext,
+    query: BudgetTransactionQuery,
+    kind?: TransactionType,
+    model: Model<Transaction> = this.transactionModel,
+  ) {
+    const filter = this.buildFilterForBudget(budget, {
+      ...query,
+      ...(kind ? { transactionType: kind } : {}),
+    });
     const aggregate = await model.aggregate<{
       _id: string;
       totalRevenue: number;
@@ -101,20 +177,27 @@ export class TransactionsService {
       { $match: filter },
       {
         $group: {
-          _id: '$currency',
+          _id: budget.ownerType === 'user' ? '$currency' : null,
           totalRevenue: { $sum: '$amount' },
         },
       },
     ]);
-
+    if (budget.ownerType === 'group')
+      return {
+        fromDate: query.fromDate,
+        toDate: query.toDate,
+        totalRevenue:
+          Math.round(
+            ((aggregate[0]?.totalRevenue ?? 0) + Number.EPSILON) * 100,
+          ) / 100,
+      };
     const currencies = aggregate
       .filter((row) => typeof row._id === 'string')
       .map((row) => ({
         currency: row._id,
         totalRevenue: normalizeMoney(row.totalRevenue, row._id),
       }))
-      .sort((left, right) => left.currency.localeCompare(right.currency));
-
+      .sort((a, b) => a.currency.localeCompare(b.currency));
     return {
       fromDate: query.fromDate,
       toDate: query.toDate,
@@ -125,82 +208,187 @@ export class TransactionsService {
   }
 
   async delete(userId: string, transactionId: string) {
-    const session = await this.connection.startSession();
-    try {
-      return await session.withTransaction(async () => {
-        const transaction = await this.findOne(
-          userId,
-          transactionId,
-          this.transactionModel,
-          session,
+    const budget = personalBudget(userId);
+    return this.runForBudget(budget, userId, async (session) => {
+      const transaction = await this.findOneForBudget(
+        budget,
+        transactionId,
+        undefined,
+        session,
+      );
+      if (transaction.type === 'transfer')
+        throw new BadRequestException(
+          'Use the transfer endpoint to delete a transfer.',
         );
-        if (transaction.type === 'transfer')
-          throw new BadRequestException(
-            'Use the transfer endpoint to delete a transfer.',
-          );
-        await this.lockAccounts(
-          userId,
-          [transaction.accountId.toString()],
-          session,
-        );
-        const deleted = await this.transactionModel.findOneAndUpdate(
-          {
-            _id: transactionId,
-            ...personalBudget(userId),
-            ...activeTransactionFilter,
-          },
-          {
-            $set: {
-              deletedAt: new Date(),
-              deletedBy: new Types.ObjectId(userId),
-            },
-          },
-          { returnDocument: 'after', session },
-        );
-        if (!deleted)
-          throw new NotFoundException(`Transaction ${transactionId} not found`);
-        await this.snapshotService.recalculateSnapshotsFromDate(
-          userId,
-          transaction.accountId.toString(),
-          { date: transaction.transactionDate.toISOString() },
-          {
-            amount:
-              transaction.amount * (transaction.type === 'expense' ? 1 : -1),
-          },
-          session,
-        );
-        return null;
-      });
-    } finally {
-      await session.endSession();
-    }
+      await this.deleteForBudget(budget, userId, transaction, session);
+      return null;
+    });
   }
 
-  async lockAccounts(
-    userId: string,
+  async updateForBudget(
+    budget: BudgetContext,
+    row: FinancialTransaction,
+    changes: FinancialChanges,
+    session: ClientSession,
+    model: Model<Transaction> = this.transactionModel,
+    populateCategory = false,
+    account?: Account & { _id: Types.ObjectId },
+  ) {
+    const resolved =
+      account ??
+      (await this.accountForBudget(budget, row.accountId.toString(), session));
+    await this.lockAccountsForBudget(
+      budget,
+      [row.accountId.toString()],
+      session,
+    );
+    const lookup = model.findOneAndUpdate(
+      { _id: row._id, ...budgetFilter(budget), ...activeTransactionFilter },
+      { $set: changes },
+      { session, returnDocument: 'after', runValidators: true },
+    );
+    if (populateCategory) lookup.populate('category');
+    const result = await lookup.lean().exec();
+    if (!result)
+      throw new NotFoundException(
+        budget.ownerType === 'group'
+          ? 'Transaction not found'
+          : `${row.type === 'expense' ? 'Expense' : 'Income'} ${row._id.toString()} for user ${budget.ownerId.toString()} not found.`,
+      );
+    if (changes.amount !== undefined || budget.ownerType === 'group') {
+      const delta =
+        ((changes.amount ?? row.amount) - row.amount) *
+        (row.type === 'expense' ? -1 : 1);
+      await this.snapshotService.applyForBudget(
+        resolved,
+        row.transactionDate,
+        delta,
+        session,
+      );
+    }
+    return result;
+  }
+
+  async deleteForBudget(
+    budget: BudgetContext,
+    actorId: string,
+    row: FinancialTransaction,
+    session: ClientSession,
+    account?: Account & { _id: Types.ObjectId },
+  ) {
+    const resolved =
+      account ??
+      (await this.accountForBudget(budget, row.accountId.toString(), session));
+    await this.lockAccountsForBudget(
+      budget,
+      [row.accountId.toString()],
+      session,
+    );
+    const deleted = await this.transactionModel.findOneAndUpdate(
+      { _id: row._id, ...budgetFilter(budget), ...activeTransactionFilter },
+      {
+        $set: { deletedAt: new Date(), deletedBy: new Types.ObjectId(actorId) },
+      },
+      { returnDocument: 'after', session },
+    );
+    if (!deleted)
+      throw new NotFoundException(
+        budget.ownerType === 'group'
+          ? 'Transaction not found'
+          : `Transaction ${row._id.toString()} not found`,
+      );
+    await this.snapshotService.applyForBudget(
+      resolved,
+      row.transactionDate,
+      row.amount * (row.type === 'expense' ? 1 : -1),
+      session,
+    );
+    return deleted.toObject();
+  }
+
+  async accountForCreate(
+    budget: BudgetContext,
+    accountId: string,
+    date: Date,
+    session: ClientSession,
+  ) {
+    const account = await this.accountForBudget(budget, accountId, session);
+    if (budget.ownerType === 'group' && date < account.openedAt!)
+      throw new BadRequestException('Transaction predates wallet');
+    return account;
+  }
+
+  async accountForBudget(
+    budget: BudgetContext,
+    accountId: string,
+    session: ClientSession,
+  ) {
+    if (budget.ownerType === 'user')
+      return (
+        await this.resolveActiveAccount(
+          budget.ownerId.toString(),
+          accountId,
+          session,
+        )
+      ).account;
+    const account = await this.accountModel
+      .findOne({ _id: accountId, ...budgetFilter(budget) })
+      .session(session)
+      .lean()
+      .exec();
+    if (!account) throw new NotFoundException('Account not found');
+    return account;
+  }
+
+  lockAccounts(userId: string, accountIds: string[], session: ClientSession) {
+    return this.lockAccountsForBudget(
+      personalBudget(userId),
+      accountIds,
+      session,
+    );
+  }
+
+  async lockAccountsForBudget(
+    budget: BudgetContext,
     accountIds: string[],
     session: ClientSession,
   ) {
     for (const id of [...new Set(accountIds)].sort()) {
       const result = await this.accountModel.updateOne(
-        { _id: id, ...personalBudget(userId), archivedAt: null },
+        {
+          _id: id,
+          ...budgetFilter(budget),
+          ...(budget.ownerType === 'user' ? { archivedAt: null } : {}),
+        },
         { $inc: { mutationVersion: 1 } },
         { session },
       );
       if (!result.matchedCount)
-        throw new NotFoundException(`Account ${id} not found.`);
+        throw new NotFoundException(
+          budget.ownerType === 'group'
+            ? 'Account not found'
+            : `Account ${id} not found.`,
+        );
     }
   }
 
-  async hasHistoryByAccountId(
+  hasHistoryByAccountId(
     userId: string,
+    accountId: string,
+    session: ClientSession,
+  ) {
+    return this.hasHistoryForBudget(personalBudget(userId), accountId, session);
+  }
+
+  async hasHistoryForBudget(
+    budget: BudgetContext,
     accountId: string,
     session: ClientSession,
   ) {
     const accountObjectId = new Types.ObjectId(accountId);
     const found = await this.transactionModel
       .exists({
-        ...personalBudget(userId),
+        ...budgetFilter(budget),
         $or: [
           { accountId: accountObjectId },
           { 'source.accountId': accountObjectId },
@@ -211,16 +399,14 @@ export class TransactionsService {
     return Boolean(found);
   }
 
-  buildFilter(
-    userId: Types.ObjectId,
-    query: Pick<
-      ListTransactionsQueryDto,
-      'snapshotId' | 'accountId' | 'fromDate' | 'toDate' | 'transactionType'
-    > & { categoryId?: string; currency?: string },
-  ) {
+  buildFilter(userId: Types.ObjectId, query: BudgetTransactionQuery) {
+    return this.buildFilterForBudget(personalBudget(userId), query);
+  }
+
+  buildFilterForBudget(budget: BudgetContext, query: BudgetTransactionQuery) {
     const filter: {
-      userId: Types.ObjectId;
-      ownerType: 'user';
+      userId?: Types.ObjectId;
+      ownerType: 'user' | 'group';
       ownerId: Types.ObjectId;
       type?: TransactionType;
       transactionDate?: {
@@ -234,18 +420,22 @@ export class TransactionsService {
       $and?: Array<{ $or: Record<string, Types.ObjectId>[] }>;
       deletedAt: null;
       currency?: string;
-    } = { ...personalBudget(userId), ...activeTransactionFilter };
+      participantId?: Types.ObjectId;
+    } = { ...budgetFilter(budget), ...activeTransactionFilter };
 
     if (query.categoryId) {
       filter.category = new Types.ObjectId(query.categoryId);
     }
     if (query.currency) filter.currency = query.currency;
+    if (query.participantId)
+      filter.participantId = new Types.ObjectId(query.participantId);
 
     if (query.snapshotId) {
       const snapshotId = new Types.ObjectId(query.snapshotId);
       if (
         query.transactionType === 'income' ||
-        query.transactionType === 'expense'
+        query.transactionType === 'expense' ||
+        budget.ownerType === 'group'
       )
         filter.snapshotId = snapshotId;
       else
@@ -260,7 +450,8 @@ export class TransactionsService {
       const accountId = new Types.ObjectId(query.accountId);
       if (
         query.transactionType === 'income' ||
-        query.transactionType === 'expense'
+        query.transactionType === 'expense' ||
+        budget.ownerType === 'group'
       )
         filter.accountId = accountId;
       else {

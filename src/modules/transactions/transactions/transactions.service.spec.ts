@@ -1,10 +1,12 @@
 import { NotFoundException } from '@nestjs/common';
-import { ClientSession, Connection, Model, Types } from 'mongoose';
+import { ClientSession, Model, Types } from 'mongoose';
 import { AccountsSnapshotsService } from '../../accounts-snapshots/accounts-snapshots.service';
 import { AccountDocument } from '../../accounts/schemas/accounts.schema';
 import { UserDocument } from '../../users/schemas/user.schema';
 import { TransactionDocument } from '../schemas/transaction.schema';
 import { TransactionsService } from './transactions.service';
+import { BudgetWriteService } from '../../budgets/budget-write.service';
+import { groupBudget } from 'src/common/budget/budget-context';
 
 describe('personal transactions boundary', () => {
   const userId = new Types.ObjectId().toString();
@@ -14,7 +16,7 @@ describe('personal transactions boundary', () => {
     withTransaction: jest.fn(async (fn: () => Promise<unknown>) => fn()),
     endSession: jest.fn(),
   };
-  const accountModel = { updateOne: jest.fn() };
+  const accountModel = { updateOne: jest.fn(), findOne: jest.fn() };
   const transactionModel = {
     find: jest.fn(),
     countDocuments: jest.fn(),
@@ -22,13 +24,19 @@ describe('personal transactions boundary', () => {
     findOneAndUpdate: jest.fn(),
     exists: jest.fn(),
   };
-  const snapshots = { recalculateSnapshotsFromDate: jest.fn() };
+  const snapshots = { applyForBudget: jest.fn() };
+  const write = {
+    run: jest.fn(
+      async (_budget, _actor, work: (s: ClientSession) => Promise<unknown>) =>
+        work(session as unknown as ClientSession),
+    ),
+  };
   const service = new TransactionsService(
     {} as Model<UserDocument>,
     transactionModel as unknown as Model<TransactionDocument>,
     accountModel as unknown as Model<AccountDocument>,
     snapshots as unknown as AccountsSnapshotsService,
-    { startSession: async () => session } as unknown as Connection,
+    write as unknown as BudgetWriteService,
   );
   beforeEach(() => {
     jest.clearAllMocks();
@@ -140,7 +148,13 @@ describe('personal transactions boundary', () => {
     transactionModel.findOne.mockReturnValue({
       session: () => ({ lean: () => ({ exec: async () => tx }) }),
     });
-    transactionModel.findOneAndUpdate.mockResolvedValue(tx);
+    transactionModel.findOneAndUpdate.mockResolvedValue({ toObject: () => tx });
+    jest.spyOn(service, 'accountForBudget').mockResolvedValue({
+      _id: new Types.ObjectId(first),
+      ownerType: 'user',
+      ownerId: new Types.ObjectId(userId),
+      currency: 'USD',
+    } as Awaited<ReturnType<TransactionsService['accountForBudget']>>);
     await service.delete(userId, second);
     expect(transactionModel.findOneAndUpdate).toHaveBeenCalledWith(
       expect.objectContaining({ ownerType: 'user', deletedAt: null }),
@@ -152,12 +166,119 @@ describe('personal transactions boundary', () => {
       },
       { returnDocument: 'after', session },
     );
-    expect(snapshots.recalculateSnapshotsFromDate).toHaveBeenCalledWith(
-      userId,
-      first,
-      expect.anything(),
-      { amount: 42 },
+    expect(snapshots.applyForBudget).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ownerType: 'user',
+        ownerId: new Types.ObjectId(userId),
+      }),
+      tx.transactionDate,
+      42,
       session,
     );
+  });
+  it('shares group history lookup while retaining the owner pair and deleted history', async () => {
+    const budget = groupBudget(userId);
+    transactionModel.exists.mockReturnValue({
+      session: async () => ({ _id: first }),
+    });
+    await expect(
+      service.hasHistoryForBudget(
+        budget,
+        first,
+        session as unknown as ClientSession,
+      ),
+    ).resolves.toBe(true);
+    expect(transactionModel.exists).toHaveBeenCalledWith({
+      ...budget,
+      $or: [
+        { accountId: new Types.ObjectId(first) },
+        { 'source.accountId': new Types.ObjectId(first) },
+        { 'destination.accountId': new Types.ObjectId(first) },
+      ],
+    });
+  });
+
+  it('does not run or close an existing personal session', async () => {
+    const callback = jest.fn(async () => 42);
+    await expect(
+      service.runForBudget(
+        { ownerType: 'user', ownerId: new Types.ObjectId(userId) },
+        userId,
+        callback,
+        session as unknown as ClientSession,
+      ),
+    ).resolves.toBe(42);
+    expect(callback).toHaveBeenCalledWith(session);
+    expect(write.run).not.toHaveBeenCalled();
+    expect(session.endSession).not.toHaveBeenCalled();
+  });
+  it.each([
+    ['user', 'income', 10, 15, 5],
+    ['user', 'expense', 20, 7, 13],
+    ['group', 'income', 10, 15, 5],
+    ['group', 'expense', 20, 7, 13],
+  ] as const)(
+    'applies the %s %s old/new difference in the caller transaction',
+    async (ownerType, type, amount, updated, expectedDelta) => {
+      const budget = { ownerType, ownerId: new Types.ObjectId(userId) };
+      const account = {
+        ...budget,
+        _id: new Types.ObjectId(first),
+        currency: ownerType === 'user' ? 'USD' : undefined,
+      } as Awaited<ReturnType<TransactionsService['accountForBudget']>>;
+      const row = {
+        ...budget,
+        _id: new Types.ObjectId(second),
+        createdBy: budget.ownerId,
+        accountId: account._id,
+        snapshotId: new Types.ObjectId(),
+        amount,
+        type,
+        transactionDate: new Date('2026-06-15T12:00:00Z'),
+        origin: null,
+      };
+      transactionModel.findOneAndUpdate.mockReturnValue({
+        lean: () => ({ exec: async () => ({ ...row, amount: updated }) }),
+      });
+      await service.updateForBudget(
+        budget,
+        row,
+        { amount: updated },
+        session as unknown as ClientSession,
+        undefined,
+        false,
+        account,
+      );
+      expect(transactionModel.findOneAndUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          ownerType,
+          ownerId: budget.ownerId,
+          deletedAt: null,
+        }),
+        { $set: { amount: updated } },
+        expect.objectContaining({ session }),
+      );
+      expect(snapshots.applyForBudget).toHaveBeenCalledWith(
+        account,
+        row.transactionDate,
+        expectedDelta,
+        session,
+      );
+    },
+  );
+
+  it('retains group account filters without personal transfer alternatives or userId', () => {
+    const budget = groupBudget(userId);
+    expect(
+      service.buildFilterForBudget(budget, {
+        accountId: first,
+        participantId: second,
+      }),
+    ).toEqual({
+      ...budget,
+      deletedAt: null,
+      accountId: new Types.ObjectId(first),
+      participantId: new Types.ObjectId(second),
+    });
   });
 });

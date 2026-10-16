@@ -8,23 +8,29 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { hasValidMoneyPrecision } from 'src/common/money/money';
-import { InjectConnection, InjectModel } from '@nestjs/mongoose';
-import { ClientSession, Connection, Model, Types } from 'mongoose';
+import { InjectModel } from '@nestjs/mongoose';
+import { ClientSession, Model, Types } from 'mongoose';
+import { BudgetContext, budgetFilter } from 'src/common/budget/budget-context';
 import { AccountsSnapshotsService } from 'src/modules/accounts-snapshots/accounts-snapshots.service';
-import { getPagination } from 'src/common/utils/pagination.util';
+import { Account } from 'src/modules/accounts/schemas/accounts.schema';
 import {
   ExpenseCategory,
   ExpenseCategoryDocument,
 } from 'src/modules/expense-categories/schemas/expense-category.schema';
+import { lockBudgetExpenseCategory } from '../../expense-categories/expense-category-lock';
 import { PaginationQueryDto } from '../../../common/dto/pagination-query.dto';
-import { TransactionsService } from '../transactions/transactions.service';
+import {
+  FinancialChanges,
+  FinancialTransaction,
+  TransactionsService,
+} from '../transactions/transactions.service';
 import { CreateExpenseDto } from './dto/create-expense.dto';
 import { ListExpensesQueryDto } from './dto/list-expenses-query.dto';
 import { UpdateExpenseDto } from './dto/update-expense.dto';
 import { Expense, ExpenseDocument } from '../schemas/expense.schema';
 import { TransactionOrigin } from '../schemas/transaction.schema';
-import { activeTransactionFilter } from '../transactions/active-transaction.filter';
-import { lockPersonalExpenseCategory } from '../../expense-categories/expense-category-lock';
+
+type ExpenseCommand = CreateExpenseDto & { participantId?: string };
 
 @Injectable()
 export class ExpensesService {
@@ -35,120 +41,126 @@ export class ExpensesService {
     private readonly expenseCategoryModel: Model<ExpenseCategoryDocument>,
     private readonly snapshotsService: AccountsSnapshotsService,
     private readonly transactionsService: TransactionsService,
-    @InjectConnection() private readonly connection: Connection,
   ) {}
 
-  async create(
+  create(
     userId: string,
-    createExpenseDto: CreateExpenseDto,
+    dto: CreateExpenseDto,
     session?: ClientSession,
     origin?: TransactionOrigin,
   ) {
-    if (session)
-      return this._doCreate(userId, createExpenseDto, session, origin);
-    const s = await this.connection.startSession();
-    try {
-      return await s.withTransaction(() =>
-        this._doCreate(userId, createExpenseDto, s, origin),
-      );
-    } finally {
-      await s.endSession();
-    }
+    const budget = personalBudget(userId);
+    return this.transactionsService.runForBudget(
+      budget,
+      userId,
+      async (activeSession) =>
+        personalResponse(
+          await this.createForBudget(
+            budget,
+            userId,
+            dto,
+            activeSession,
+            origin,
+          ),
+        ),
+      session,
+    );
   }
 
-  private async _doCreate(
-    userId: string,
-    dto: CreateExpenseDto,
+  async createForBudget(
+    budget: BudgetContext,
+    actorId: string,
+    dto: ExpenseCommand,
     session: ClientSession,
     origin?: TransactionOrigin,
+    existingAccount?: Account & { _id: Types.ObjectId },
   ) {
-    const foundIds = await this.transactionsService.resolveActiveAccount(
-      userId,
-      dto.accountId,
-      session,
-    );
-    if (!hasValidMoneyPrecision(dto.amount, foundIds.account.currency!))
+    const date = new Date(dto.transactionDate);
+    const account =
+      existingAccount ??
+      (await this.transactionsService.accountForCreate(
+        budget,
+        dto.accountId,
+        date,
+        session,
+      ));
+    if (
+      budget.ownerType === 'user' &&
+      !hasValidMoneyPrecision(dto.amount, account.currency!)
+    )
       throw new BadRequestException('Amount exceeds currency precision.');
-    await this.transactionsService.lockAccounts(
-      userId,
-      [foundIds.account._id.toString()],
+    await this.transactionsService.lockAccountsForBudget(
+      budget,
+      [account._id.toString()],
       session,
     );
-    const category = await this.ensureCategoryExists(
-      userId,
+    const category = await lockBudgetExpenseCategory(
+      this.expenseCategoryModel,
+      budget,
       dto.categoryId,
       session,
     );
-    const snapshot = await this.snapshotsService.findOrCreateByAccountId(
-      userId,
-      foundIds.account._id.toString(),
-      dto.transactionDate,
+    const snapshot = await this.snapshotsService.prepareForBudget(
+      account,
+      date,
       session,
     );
     if (!snapshot) throw new NotFoundException('Snapshot not found.');
     const [expense] = await this.expenseModel.create(
       [
         {
-          ...personalBudget(foundIds.userId),
-          createdBy: foundIds.userId,
-          participantId: foundIds.userId,
-          accountId: foundIds.account._id,
+          ...budgetFilter(budget),
+          createdBy: new Types.ObjectId(actorId),
+          participantId: new Types.ObjectId(
+            budget.ownerType === 'user'
+              ? budget.ownerId
+              : (dto.participantId ?? actorId),
+          ),
+          accountId: account._id,
           snapshotId: snapshot._id,
-          category,
+          category: category._id,
           amount: dto.amount,
-          currency: foundIds.account.currency,
-          transactionDate: dto.transactionDate,
+          transactionDate: date,
           description: dto.description,
           merchant: dto.merchant,
           items: dto.items ?? [],
-          origin,
+          ...(budget.ownerType === 'user'
+            ? { currency: account.currency, origin }
+            : {}),
         },
       ],
       { session },
     );
-    await this.snapshotsService.recalculateSnapshotsFromDate(
-      userId,
-      foundIds.account._id.toString(),
-      { date: dto.transactionDate },
-      { amount: -dto.amount },
+    await this.snapshotsService.applyForBudget(
+      account,
+      date,
+      -dto.amount,
       session,
     );
-    return personalResponse(await expense.populate('category'));
+    return budget.ownerType === 'user'
+      ? (await expense.populate('category')).toObject()
+      : expense.toObject();
   }
 
-  // TODO Добавить сортировку в DTO
   async findAll(userId: string, query: ListExpensesQueryDto) {
-    const foundIds = await this.transactionsService.ensureUserExists(userId);
-
-    const { page, limit, skip } = getPagination(query);
-    const filter = this.buildFilter(foundIds.userId, query);
-
-    const [items, total] = await Promise.all([
-      this.expenseModel
-        .find(filter)
-        .sort({ transactionDate: -1, _id: -1 })
-        .skip(skip)
-        .limit(limit)
-        .populate('category')
-        .lean()
-        .exec(),
-      this.expenseModel.countDocuments(filter),
-    ]);
-
-    return {
-      items: items.map(personalResponse),
-      total,
-      page,
-      limit,
-    };
+    const budget = await this.transactionsService.ensureUserExists(userId);
+    const result = await this.transactionsService.findAllForBudget(
+      budget,
+      query,
+      undefined,
+      this.expenseModel,
+      true,
+    );
+    return { ...result, items: result.items.map(personalResponse) };
   }
 
-  async countByFilters(
+  countByFilters(
     userId: string,
     query: Omit<ListExpensesQueryDto, keyof PaginationQueryDto>,
   ) {
-    const filter = this.buildFilter(new Types.ObjectId(userId), query);
-    return this.expenseModel.countDocuments(filter);
+    return this.expenseModel.countDocuments(
+      this.transactionsService.buildFilter(new Types.ObjectId(userId), query),
+    );
   }
 
   async countHistoryByFilters(
@@ -156,39 +168,28 @@ export class ExpensesService {
     query: Omit<ListExpensesQueryDto, keyof PaginationQueryDto>,
     session?: ClientSession,
   ) {
-    const filter = this.buildFilter(new Types.ObjectId(userId), query);
-    const { deletedAt: _deletedAt, ...historyFilter } = filter;
-    const countQuery = this.expenseModel.countDocuments(historyFilter);
-    return session && typeof countQuery.session === 'function'
-      ? countQuery.session(session)
-      : countQuery;
+    const { deletedAt: _deletedAt, ...filter } =
+      this.transactionsService.buildFilter(new Types.ObjectId(userId), query);
+    const lookup = this.expenseModel.countDocuments(filter);
+    return session && typeof lookup.session === 'function'
+      ? lookup.session(session)
+      : lookup;
   }
 
   async findOne(userId: string, expenseId: string, session?: ClientSession) {
-    const foundIds = await this.transactionsService.ensureUserExists(
-      userId,
+    await this.transactionsService.ensureUserExists(userId, session);
+    const row = await this.transactionsService.findOneForBudget(
+      personalBudget(userId),
+      expenseId,
+      undefined,
       session,
+      this.expenseModel,
+      true,
     );
-    const foundExpense = await this.expenseModel
-      .findOne({
-        _id: expenseId,
-        ...personalBudget(foundIds.userId),
-        ...activeTransactionFilter,
-      })
-      .populate('category')
-      .session(session ?? null)
-      .lean();
-
-    if (!foundExpense) {
-      throw new NotFoundException(
-        `Expense ${expenseId} for user ${userId} not found.`,
-      );
-    }
-
-    return personalResponse(foundExpense);
+    return personalResponse(row);
   }
 
-  async findRevenue(userId: string, query: ListExpensesQueryDto) {
+  findRevenue(userId: string, query: ListExpensesQueryDto) {
     return this.transactionsService.findRevenue(
       userId,
       query,
@@ -196,118 +197,84 @@ export class ExpensesService {
     );
   }
 
-  async update(
-    userId: string,
-    expenseId: string,
-    updateExpenseDto: UpdateExpenseDto,
-  ) {
-    const s = await this.connection.startSession();
-    try {
-      return await s.withTransaction(async () => {
-        const expense = await this.findOne(userId, expenseId, s);
-
-        if (!expense) {
-          throw new NotFoundException(`Expense ${expenseId} not found.`);
-        }
+  async update(userId: string, expenseId: string, dto: UpdateExpenseDto) {
+    const budget = personalBudget(userId);
+    return this.transactionsService.runForBudget(
+      budget,
+      userId,
+      async (session) => {
+        await this.transactionsService.ensureUserExists(userId, session);
+        const expense = await this.transactionsService.findOneForBudget(
+          budget,
+          expenseId,
+          undefined,
+          session,
+          this.expenseModel,
+          true,
+        );
         if (
-          updateExpenseDto.amount !== undefined &&
+          dto.amount !== undefined &&
           (!expense.currency ||
-            !hasValidMoneyPrecision(updateExpenseDto.amount, expense.currency))
+            !hasValidMoneyPrecision(dto.amount, expense.currency))
         )
           throw new BadRequestException('Amount exceeds currency precision.');
-
-        const foundCategoryId = updateExpenseDto.categoryId
-          ? await this.ensureCategoryExists(
-              userId,
-              updateExpenseDto.categoryId,
-              s,
-            )
+        const category = dto.categoryId
+          ? await this.categoryForBudget(budget, dto.categoryId, session)
           : undefined;
-        const updatePayload = Object.fromEntries(
+        const changes: FinancialChanges = Object.fromEntries(
           Object.entries({
-            amount: updateExpenseDto.amount,
-            description: updateExpenseDto.description,
-            merchant: updateExpenseDto.merchant,
-            items: updateExpenseDto.items,
-            category: foundCategoryId,
+            amount: dto.amount,
+            description: dto.description,
+            merchant: dto.merchant,
+            items: dto.items,
+            category: category?._id,
           }).filter(([, value]) => value !== undefined),
         );
-
-        await this.transactionsService.lockAccounts(
-          userId,
-          [expense.accountId.toString()],
-          s,
+        return personalResponse(
+          await this.updateForBudget(budget, expense, changes, session),
         );
-        if (updateExpenseDto.amount !== undefined) {
-          const diffAmount = expense.amount - updateExpenseDto.amount;
-          await this.snapshotsService.recalculateSnapshotsFromDate(
-            userId,
-            expense.accountId.toString(),
-            { date: expense.transactionDate.toISOString() },
-            { amount: diffAmount },
-            s,
-          );
-        }
-
-        // TODO Проверить с пустыми значениями для удаления
-        const updatedExpense = await this.expenseModel
-          .findOneAndUpdate(
-            {
-              _id: expenseId,
-              ...personalBudget(new Types.ObjectId(userId)),
-              ...activeTransactionFilter,
-            },
-            { $set: updatePayload },
-            {
-              returnDocument: 'after',
-              runValidators: true,
-              session: s,
-            },
-          )
-          .populate('category')
-          .lean();
-
-        if (!updatedExpense) {
-          throw new NotFoundException(
-            `Expense ${expenseId} for user ${userId} not found.`,
-          );
-        }
-
-        return personalResponse(updatedExpense);
-      });
-    } finally {
-      await s.endSession();
-    }
+      },
+    );
   }
 
-  private buildFilter(
-    userId: Types.ObjectId,
-    query: Partial<ListExpensesQueryDto>,
+  updateForBudget(
+    budget: BudgetContext,
+    expense: FinancialTransaction,
+    changes: FinancialChanges,
+    session: ClientSession,
+    account?: Account & { _id: Types.ObjectId },
   ) {
-    const filter: { category?: Types.ObjectId; currency?: string } = {};
-
-    if (query.categoryId) {
-      filter.category = new Types.ObjectId(query.categoryId);
-    }
-    if (query.currency) filter.currency = query.currency;
-
-    return {
-      ...this.transactionsService.buildFilter(userId, query),
-      ...filter,
-    };
+    return this.transactionsService.updateForBudget(
+      budget,
+      expense,
+      changes,
+      session,
+      this.expenseModel,
+      budget.ownerType === 'user',
+      account,
+    );
   }
 
-  private async ensureCategoryExists(
-    userId: string,
+  categoryForBudget(
+    budget: BudgetContext,
     categoryId: string,
     session: ClientSession,
   ) {
-    const category = await lockPersonalExpenseCategory(
+    return lockBudgetExpenseCategory(
       this.expenseCategoryModel,
-      userId,
+      budget,
       categoryId,
       session,
     );
-    return category._id;
+  }
+
+  async requireCategoryForBudget(budget: BudgetContext, categoryId: string) {
+    if (
+      !(await this.expenseCategoryModel.exists({
+        _id: categoryId,
+        ...budgetFilter(budget),
+      }))
+    )
+      throw new NotFoundException('Category not found');
   }
 }

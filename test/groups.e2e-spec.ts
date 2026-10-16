@@ -75,6 +75,12 @@ describe('Groups HTTP contracts (real replica set)', () => {
       type: 'family',
       ownerId: context.users[0].id,
       role: 'owner',
+      permissions: {
+        manageAccounts: true,
+        manageCategories: true,
+        manageLimits: true,
+        manageTransactions: true,
+      },
       createdAt: expect.any(String) as unknown,
       updatedAt: expect.any(String) as unknown,
     });
@@ -92,6 +98,7 @@ describe('Groups HTTP contracts (real replica set)', () => {
           manageAccounts: true,
           manageCategories: true,
           manageLimits: true,
+          manageTransactions: true,
         },
         joinedAt: expect.any(String) as unknown,
       },
@@ -475,8 +482,17 @@ describe('Groups HTTP contracts (real replica set)', () => {
         ownerType: 'user',
         ownerId: owner,
         type: 'balance',
+        name: 'Personal balance',
+        currency: 'USD',
       },
-      { userId: owner, ownerType: 'user', ownerId: owner, type: 'saving' },
+      {
+        userId: owner,
+        ownerType: 'user',
+        ownerId: owner,
+        type: 'saving',
+        name: 'Personal savings',
+        currency: 'USD',
+      },
     ]);
     await context.connection.collection('accountsnapshots').insertOne({
       _id: snapshot,
@@ -504,6 +520,7 @@ describe('Groups HTTP contracts (real replica set)', () => {
       category,
       type: 'expense',
       amount: 10,
+      currency: 'USD',
       transactionDate: new Date('2026-01-02'),
       items: [],
     });

@@ -9,6 +9,8 @@ import { InjectModel } from '@nestjs/mongoose';
 import { plainToInstance } from 'class-transformer';
 import { startOfMonth } from 'date-fns/startOfMonth';
 import { ClientSession, Model, Types } from 'mongoose';
+import { BudgetContext, budgetFilter } from 'src/common/budget/budget-context';
+import { Transaction } from '../transactions/schemas/transaction.schema';
 import { Account, AccountDocument } from '../accounts/schemas/accounts.schema';
 import { CreateAccountSnapshotDto } from './dto/create.dto';
 import { UpdateAccountSnapshotQueryDto } from './dto/update-query.dto';
@@ -18,6 +20,11 @@ import {
   AccountSnapshotsDocument,
 } from './schemas/accounts-snapshots.schema';
 
+export const roundGroupMoney = (value: number) =>
+  Math.round((value + Number.EPSILON) * 100) / 100;
+export const utcMonthEnd = (date: Date) =>
+  new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 1) - 1);
+
 @Injectable()
 export class AccountsSnapshotsService {
   constructor(
@@ -25,7 +32,157 @@ export class AccountsSnapshotsService {
     private readonly snapshotsModel: Model<AccountSnapshotsDocument>,
     @InjectModel(Account.name)
     private readonly accountsModel: Model<AccountDocument>,
+    @InjectModel(Transaction.name)
+    private readonly transactionsModel?: Model<Transaction>,
   ) {}
+
+  async balanceForBudget(
+    account: Account & { _id: Types.ObjectId },
+    date: Date,
+    session?: ClientSession,
+  ) {
+    if (account.ownerType === 'user') {
+      return (
+        (
+          await this.findByAccountId(
+            String(account.ownerId),
+            String(account._id),
+            date.toISOString(),
+            session,
+          )
+        )?.amount ?? 0
+      );
+    }
+    if (account.openedAt && date < account.openedAt) return 0;
+    const totals = await this.transactionsModel!.aggregate<{ total: number }>([
+      {
+        $match: {
+          ...budgetFilter(account),
+          accountId: account._id,
+          deletedAt: null,
+          transactionDate: { $lte: date },
+        },
+      },
+      {
+        $group: {
+          _id: null,
+          total: {
+            $sum: {
+              $cond: [
+                { $eq: ['$type', 'expense'] },
+                { $multiply: ['$amount', -1] },
+                '$amount',
+              ],
+            },
+          },
+        },
+      },
+    ]).session(session ?? null);
+    return roundGroupMoney(
+      (account.initialAmount ?? 0) + (totals[0]?.total ?? 0),
+    );
+  }
+
+  async rebuildForBudget(
+    account: Account & { _id: Types.ObjectId },
+    from: Date,
+    session: ClientSession,
+  ) {
+    const first = utcMonthEnd(from);
+    const existing = await this.snapshotsModel
+      .find({ accountId: account._id, date: { $gte: first } })
+      .session(session)
+      .lean();
+    const dates = new Map(existing.map((s) => [s.date.toISOString(), s.date]));
+    dates.set(first.toISOString(), first);
+    for (const date of dates.values()) {
+      const amount = await this.balanceForBudget(account, date, session);
+      await this.snapshotsModel.updateOne(
+        { accountId: account._id, date },
+        { $set: { amount } },
+        { upsert: true, session, runValidators: true },
+      );
+    }
+  }
+
+  async prepareForBudget(
+    account: Account & { _id: Types.ObjectId },
+    date: Date,
+    session: ClientSession,
+  ) {
+    if (account.ownerType === 'user')
+      return this.findOrCreateByAccountId(
+        String(account.ownerId),
+        String(account._id),
+        date.toISOString(),
+        session,
+      );
+    await this.rebuildForBudget(account, date, session);
+    const snapshot = await this.snapshotsModel
+      .findOne({ accountId: account._id, date: utcMonthEnd(date) })
+      .session(session);
+    if (!snapshot) throw new NotFoundException('Snapshot not found');
+    return snapshot;
+  }
+
+  async applyForBudget(
+    account: Account & { _id: Types.ObjectId },
+    date: Date,
+    delta: number,
+    session: ClientSession,
+  ) {
+    if (account.ownerType === 'group')
+      return this.rebuildForBudget(account, date, session);
+    return this.recalculateSnapshotsFromDate(
+      String(account.ownerId),
+      String(account._id),
+      { date: date.toISOString() },
+      { amount: delta },
+      session,
+    );
+  }
+
+  async openingForBudget(
+    account: Account & { _id: Types.ObjectId },
+    session: ClientSession,
+  ) {
+    if (account.ownerType === 'user')
+      return this.create(
+        String(account.ownerId),
+        String(account._id),
+        { amount: account.initialAmount ?? 0, date: account.openedAt! },
+        session,
+      );
+    const [snapshot] = await this.snapshotsModel.create(
+      [
+        {
+          accountId: account._id,
+          date: utcMonthEnd(account.openedAt!),
+          amount: account.initialAmount,
+        },
+      ],
+      { session },
+    );
+    return snapshot;
+  }
+
+  async timelineForBudget(accountId: Types.ObjectId, session?: ClientSession) {
+    return this.snapshotsModel
+      .find({ accountId })
+      .sort({ date: -1 })
+      .limit(20)
+      .session(session ?? null)
+      .lean();
+  }
+
+  async deleteForBudget(
+    budget: BudgetContext,
+    accountId: string,
+    session?: ClientSession,
+  ) {
+    const owned = await this.ensureAccountExists(budget, accountId, session);
+    await this.snapshotsModel.deleteMany({ accountId: owned }, { session });
+  }
 
   async findByAccountId(
     userId: string,
@@ -213,15 +370,7 @@ export class AccountsSnapshotsService {
     accountId: string,
     session?: ClientSession,
   ) {
-    const foundAccountId = await this.ensureAccountExists(
-      userId,
-      accountId,
-      session,
-    );
-    await this.snapshotsModel.deleteMany(
-      { accountId: foundAccountId },
-      { session },
-    );
+    return this.deleteForBudget(personalBudget(userId), accountId, session);
   }
 
   // TODO Параметры сортировки и пагинации
@@ -258,20 +407,24 @@ export class AccountsSnapshotsService {
   }
 
   private async ensureAccountExists(
-    userId: string,
+    context: string | BudgetContext,
     accountId: string,
     session?: ClientSession,
   ) {
+    const budget =
+      typeof context === 'string' ? personalBudget(context) : context;
     const accountEntity = await this.accountsModel
       .exists({
         _id: accountId,
-        ...personalBudget(new Types.ObjectId(userId)),
+        ...budgetFilter(budget),
       })
       .session(session ?? null);
 
     if (!accountEntity) {
       throw new NotFoundException(
-        `Account ${accountId} for user ${userId} not found.`,
+        budget.ownerType === 'user'
+          ? `Account ${accountId} for user ${budget.ownerId.toString()} not found.`
+          : 'Account not found',
       );
     }
 

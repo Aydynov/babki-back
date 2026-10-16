@@ -36,7 +36,7 @@ export class GroupsService {
     private readonly access: GroupsAccessService,
     private readonly transactions: GroupsTransactionService,
   ) {}
-  toDto(group: GroupDocument, userId: string) {
+  toDto(group: GroupDocument, userId: string, permissions: GroupPermissions) {
     return {
       id: String(group._id),
       name: group.name,
@@ -45,7 +45,8 @@ export class GroupsService {
         ? { description: group.description }
         : {}),
       ownerId: String(group.ownerId),
-      role: String(group.ownerId) === userId ? 'owner' : 'member',
+      role: group.ownerId.equals(userId) ? 'owner' : 'member',
+      permissions,
       createdAt: group.createdAt,
       updatedAt: group.updatedAt,
     };
@@ -68,15 +69,18 @@ export class GroupsService {
         session,
         now,
       );
-      return this.toDto(group, userId);
+      return this.toDto(group, userId, effectivePermissions(true));
     });
   }
   async findAll(userId: string, query: PaginationQueryDto) {
     const { page, limit, skip } = getPagination(query);
     const memberships = await this.memberships
       .find({ userId, status: 'active' })
-      .select('groupId')
+      .select('groupId permissions')
       .lean();
+    const byGroup = new Map(
+      memberships.map((m) => [String(m.groupId), m.permissions]),
+    );
     const filter = {
       _id: { $in: memberships.map((m) => m.groupId) },
       deletedAt: null,
@@ -90,14 +94,27 @@ export class GroupsService {
       this.groups.countDocuments(filter),
     ]);
     return {
-      items: groups.map((group) => this.toDto(group, userId)),
+      items: groups.map((group) =>
+        this.toDto(
+          group,
+          userId,
+          effectivePermissions(
+            group.ownerId.equals(userId),
+            byGroup.get(String(group._id)),
+          ),
+        ),
+      ),
       total,
       page,
       limit,
     };
   }
   async findOne(userId: string, groupId: string) {
-    return this.toDto(await this.access.requireMember(groupId, userId), userId);
+    const { group, permissions } = await this.access.memberContext(
+      groupId,
+      userId,
+    );
+    return this.toDto(group, userId, permissions);
   }
   async update(userId: string, groupId: string, dto: UpdateGroupDto) {
     if (dto.name === undefined && dto.description === undefined)
@@ -106,7 +123,7 @@ export class GroupsService {
       if (dto.name !== undefined) group.name = dto.name;
       if (dto.description !== undefined) group.description = dto.description;
       await group.save({ session });
-      return this.toDto(group, userId);
+      return this.toDto(group, userId, effectivePermissions(true));
     });
   }
   async remove(userId: string, groupId: string) {
@@ -303,7 +320,7 @@ export class GroupsService {
         ],
         { session },
       );
-      return this.toDto(group, actorId);
+      return this.toDto(group, actorId, effectivePermissions(false));
     });
   }
   private async resetPermissions(

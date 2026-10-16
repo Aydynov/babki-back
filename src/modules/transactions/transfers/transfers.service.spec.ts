@@ -16,6 +16,13 @@ describe('TransfersService', () => {
     recalculateSnapshotsFromDate: jest.fn(),
   };
   const transactions = {
+    runForBudget: jest.fn(
+      async (
+        _budget: unknown,
+        _actor: string,
+        work: (session: ClientSession) => Promise<unknown>,
+      ) => work(session as unknown as ClientSession),
+    ),
     resolveActiveAccount: jest.fn(),
     lockAccounts: jest.fn(),
   };
@@ -23,7 +30,6 @@ describe('TransfersService', () => {
     model as never,
     snapshots as never,
     transactions as never,
-    { startSession: jest.fn(async () => session) } as never,
   );
   const dto = {
     sourceAccountId: sourceId,

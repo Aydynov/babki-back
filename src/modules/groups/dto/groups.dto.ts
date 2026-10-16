@@ -54,4 +54,7 @@ export class UpdateGroupPermissionsDto {
   @ValidateIf((_object, value: unknown) => value !== undefined)
   @IsBoolean()
   manageLimits?: unknown;
+  @ValidateIf((_object, value: unknown) => value !== undefined)
+  @IsBoolean()
+  manageTransactions?: unknown;
 }

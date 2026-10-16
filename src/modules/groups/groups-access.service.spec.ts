@@ -1,10 +1,11 @@
 import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { GroupsAccessService } from './groups-access.service';
+import { Types } from 'mongoose';
 
 describe('GroupsAccessService', () => {
   const group = { ownerId: 'owner' };
   const groups = { findOne: jest.fn(), findOneAndUpdate: jest.fn() };
-  const memberships = { exists: jest.fn() };
+  const memberships = { exists: jest.fn(), findOne: jest.fn() };
   const query = (value: unknown) => ({
     session: jest.fn().mockResolvedValue(value),
   });
@@ -34,6 +35,46 @@ describe('GroupsAccessService', () => {
     groups.findOne.mockReturnValue(query(null));
     await expect(
       service.requireMember('group', 'owner'),
+    ).rejects.toBeInstanceOf(NotFoundException);
+  });
+  it('checks current delegation and defaults legacy rights without granting settings', async () => {
+    const ownerId = new Types.ObjectId();
+    const memberId = new Types.ObjectId().toString();
+    groups.findOne.mockReturnValue(query({ ownerId }));
+    memberships.findOne.mockReturnValue(
+      query({ permissions: { manageCategories: true } }),
+    );
+    expect(
+      (await service.memberContext('group', memberId)).permissions,
+    ).toEqual({
+      manageAccounts: false,
+      manageCategories: true,
+      manageLimits: false,
+      manageTransactions: false,
+    });
+    await expect(
+      service.requirePermission('group', memberId, 'manageTransactions'),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    memberships.findOne.mockReturnValue(
+      query({ permissions: { manageTransactions: true } }),
+    );
+    await expect(
+      service.requirePermission('group', memberId, 'manageTransactions'),
+    ).resolves.toMatchObject({ ownerId });
+    await expect(
+      service.requirePermission('group', memberId, 'manageAccounts'),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(
+      (await service.memberContext('group', String(ownerId))).permissions,
+    ).toEqual({
+      manageAccounts: true,
+      manageCategories: true,
+      manageLimits: true,
+      manageTransactions: true,
+    });
+    memberships.findOne.mockReturnValue(query(null));
+    await expect(
+      service.memberContext('group', memberId),
     ).rejects.toBeInstanceOf(NotFoundException);
   });
 });

@@ -8,16 +8,23 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { hasValidMoneyPrecision } from 'src/common/money/money';
-import { InjectConnection, InjectModel } from '@nestjs/mongoose';
-import { ClientSession, Connection, Model, Types } from 'mongoose';
+import { InjectModel } from '@nestjs/mongoose';
+import { ClientSession, Model, Types } from 'mongoose';
+import { BudgetContext, budgetFilter } from 'src/common/budget/budget-context';
 import { AccountsSnapshotsService } from '../../accounts-snapshots/accounts-snapshots.service';
+import { Account } from '../../accounts/schemas/accounts.schema';
 import { ListTransactionsQueryDto } from '../dto/list-transactions-query.dto';
-import { TransactionsService } from '../transactions/transactions.service';
+import {
+  FinancialChanges,
+  FinancialTransaction,
+  TransactionsService,
+} from '../transactions/transactions.service';
 import { CreateIncomeDto } from './dto/create-income.dto';
 import { Income, IncomeDocument } from '../schemas/income.schema';
 import { TransactionOrigin } from '../schemas/transaction.schema';
 import { UpdateIncomeDto } from './dto/update-income.dto';
-import { activeTransactionFilter } from '../transactions/active-transaction.filter';
+
+type IncomeCommand = Omit<CreateIncomeDto, 'source'> & { source?: string };
 
 @Injectable()
 export class IncomesService {
@@ -26,96 +33,99 @@ export class IncomesService {
     private readonly incomeModel: Model<IncomeDocument>,
     private readonly snapshotsService: AccountsSnapshotsService,
     private readonly transactionsService: TransactionsService,
-    @InjectConnection() private readonly connection: Connection,
   ) {}
 
   async create(
     userId: string,
-    createIncomeDto: CreateIncomeDto,
+    dto: CreateIncomeDto,
     session?: ClientSession,
     origin?: TransactionOrigin,
   ) {
-    if (session)
-      return this._doCreate(userId, createIncomeDto, session, origin);
-    const s = await this.connection.startSession();
-    try {
-      return await s.withTransaction(() =>
-        this._doCreate(userId, createIncomeDto, s, origin),
-      );
-    } finally {
-      await s.endSession();
-    }
+    const budget = personalBudget(userId);
+    return this.transactionsService.runForBudget(
+      budget,
+      userId,
+      async (activeSession) =>
+        personalResponse(
+          await this.createForBudget(
+            budget,
+            userId,
+            dto,
+            activeSession,
+            origin,
+          ),
+        ),
+      session,
+    );
   }
 
-  private async _doCreate(
-    userId: string,
-    createIncomeDto: CreateIncomeDto,
+  async createForBudget(
+    budget: BudgetContext,
+    actorId: string,
+    dto: IncomeCommand,
     session: ClientSession,
     origin?: TransactionOrigin,
+    existingAccount?: Account & { _id: Types.ObjectId },
   ) {
-    const foundIds = await this.transactionsService.resolveActiveAccount(
-      userId,
-      createIncomeDto.accountId,
-      session,
-    );
+    const date = new Date(dto.transactionDate);
+    const account =
+      existingAccount ??
+      (await this.transactionsService.accountForCreate(
+        budget,
+        dto.accountId,
+        date,
+        session,
+      ));
     if (
-      !hasValidMoneyPrecision(
-        createIncomeDto.amount,
-        foundIds.account.currency!,
-      )
+      budget.ownerType === 'user' &&
+      !hasValidMoneyPrecision(dto.amount, account.currency!)
     )
       throw new BadRequestException('Amount exceeds currency precision.');
-    await this.transactionsService.lockAccounts(
-      userId,
-      [foundIds.account._id.toString()],
+    await this.transactionsService.lockAccountsForBudget(
+      budget,
+      [account._id.toString()],
       session,
     );
-    const foundSnapshot = await this.snapshotsService.findOrCreateByAccountId(
-      userId,
-      foundIds.account._id.toString(),
-      createIncomeDto.transactionDate,
+    const snapshot = await this.snapshotsService.prepareForBudget(
+      account,
+      date,
       session,
     );
-
-    if (!foundSnapshot) {
+    if (!snapshot)
       throw new NotFoundException(
-        `Snapshot for account ${foundIds.account._id.toString()} not found.`,
+        `Snapshot for account ${account._id.toString()} not found.`,
       );
-    }
-
-    const [createdIncome] = await this.incomeModel.create(
+    const [income] = await this.incomeModel.create(
       [
         {
-          ...personalBudget(foundIds.userId),
-          createdBy: foundIds.userId,
-          accountId: foundIds.account._id,
-          snapshotId: foundSnapshot._id,
-          amount: createIncomeDto.amount,
-          transactionDate: createIncomeDto.transactionDate,
-          description: createIncomeDto.description,
-          source: createIncomeDto.source,
-          currency: foundIds.account.currency,
-          origin,
+          ...budgetFilter(budget),
+          createdBy: new Types.ObjectId(actorId),
+          accountId: account._id,
+          snapshotId: snapshot._id,
+          amount: dto.amount,
+          transactionDate: date,
+          description: dto.description,
+          ...(budget.ownerType === 'user'
+            ? { source: dto.source, currency: account.currency, origin }
+            : {}),
         },
       ],
       { session },
     );
-    await this.snapshotsService.recalculateSnapshotsFromDate(
-      userId,
-      foundSnapshot.accountId.toString(),
-      { date: createIncomeDto.transactionDate },
-      { amount: createIncomeDto.amount },
+    await this.snapshotsService.applyForBudget(
+      account,
+      date,
+      dto.amount,
       session,
     );
-
-    return personalResponse(createdIncome.toJSON());
+    return income.toObject();
   }
 
-  async findAll(userId: string, query: ListTransactionsQueryDto) {
+  findAll(userId: string, query: ListTransactionsQueryDto) {
     return this.transactionsService.findAll(userId, query, this.incomeModel);
   }
 
-  async findRevenue(userId: string, query: ListTransactionsQueryDto) {
+  findRevenue(userId: string, query: ListTransactionsQueryDto) {
     return this.transactionsService.findRevenue(
       userId,
       query,
@@ -123,85 +133,57 @@ export class IncomesService {
     );
   }
 
-  async findOne(userId: string, incomeId: string) {
+  findOne(userId: string, incomeId: string) {
     return this.transactionsService.findOne(userId, incomeId, this.incomeModel);
   }
 
-  async update(
-    userId: string,
-    transactionId: string,
-    updateIncomeDto: UpdateIncomeDto,
-  ) {
-    const updatePayload = Object.fromEntries(
-      Object.entries({
-        amount: updateIncomeDto.amount,
-        description: updateIncomeDto.description,
-        source: updateIncomeDto.source,
-      }).filter(([, value]) => value !== undefined),
-    );
-
-    const session = await this.connection.startSession();
-    try {
-      return await session.withTransaction(async () => {
-        const income = await this.transactionsService.findOne(
-          userId,
+  async update(userId: string, transactionId: string, dto: UpdateIncomeDto) {
+    const budget = personalBudget(userId);
+    return this.transactionsService.runForBudget(
+      budget,
+      userId,
+      async (session) => {
+        const income = await this.transactionsService.findOneForBudget(
+          budget,
           transactionId,
-          this.incomeModel,
+          undefined,
           session,
+          this.incomeModel,
         );
-
-        if (!income) {
-          throw new NotFoundException(`Income ${transactionId} not found`);
-        }
         if (
-          updateIncomeDto.amount !== undefined &&
+          dto.amount !== undefined &&
           (!income.currency ||
-            !hasValidMoneyPrecision(updateIncomeDto.amount, income.currency))
+            !hasValidMoneyPrecision(dto.amount, income.currency))
         )
           throw new BadRequestException('Amount exceeds currency precision.');
-
-        await this.transactionsService.lockAccounts(
-          userId,
-          [income.accountId.toString()],
-          session,
+        const changes = Object.fromEntries(
+          Object.entries({
+            amount: dto.amount,
+            description: dto.description,
+            source: dto.source,
+          }).filter(([, value]) => value !== undefined),
         );
-        if (updateIncomeDto.amount !== undefined) {
-          const diffAmount = updateIncomeDto.amount - income.amount;
-          await this.snapshotsService.recalculateSnapshotsFromDate(
-            userId,
-            income.accountId.toString(),
-            { date: income.transactionDate.toISOString() },
-            { amount: diffAmount },
-            session,
-          );
-        }
-
-        const updatedIncome = await this.incomeModel
-          .findOneAndUpdate(
-            {
-              _id: transactionId,
-              ...personalBudget(new Types.ObjectId(userId)),
-              ...activeTransactionFilter,
-            },
-            { $set: updatePayload },
-            {
-              returnDocument: 'after',
-              runValidators: true,
-              session,
-            },
-          )
-          .lean();
-
-        if (!updatedIncome) {
-          throw new NotFoundException(
-            `Income ${transactionId} for user ${userId} not found.`,
-          );
-        }
-
-        return personalResponse(updatedIncome);
-      });
-    } finally {
-      await session.endSession();
-    }
+        return personalResponse(
+          await this.updateForBudget(budget, income, changes, session),
+        );
+      },
+    );
+  }
+  updateForBudget(
+    budget: BudgetContext,
+    income: FinancialTransaction,
+    changes: FinancialChanges,
+    session: ClientSession,
+    account?: Account & { _id: Types.ObjectId },
+  ) {
+    return this.transactionsService.updateForBudget(
+      budget,
+      income,
+      changes,
+      session,
+      this.incomeModel,
+      false,
+      account,
+    );
   }
 }

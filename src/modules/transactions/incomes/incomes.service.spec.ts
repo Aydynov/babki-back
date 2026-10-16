@@ -1,4 +1,4 @@
-import { ClientSession, Connection, Model, Types } from 'mongoose';
+import { ClientSession, Model, Types } from 'mongoose';
 import { AccountsSnapshotsService } from '../../accounts-snapshots/accounts-snapshots.service';
 import { IncomeDocument } from '../schemas/income.schema';
 import { TransactionsService } from '../transactions/transactions.service';
@@ -11,33 +11,43 @@ describe('IncomesService transaction origin', () => {
   const snapshotId = new Types.ObjectId('507f1f77bcf86cd799439013');
   const incomeModel = { create: jest.fn() };
   const snapshots = {
-    findOrCreateByAccountId: jest.fn(),
-    recalculateSnapshotsFromDate: jest.fn(),
+    prepareForBudget: jest.fn(),
+    applyForBudget: jest.fn(),
   };
   const transactions = {
     ensureUserExists: jest.fn(),
-    resolveActiveAccount: jest.fn(),
-    lockAccounts: jest.fn(),
+    accountForCreate: jest.fn(),
+    lockAccountsForBudget: jest.fn(),
+    runForBudget: jest.fn(),
   };
   const service = new IncomesService(
     incomeModel as unknown as Model<IncomeDocument>,
     snapshots as unknown as AccountsSnapshotsService,
     transactions as unknown as TransactionsService,
-    {} as Connection,
   );
 
   beforeEach(() => {
     jest.clearAllMocks();
-    transactions.resolveActiveAccount.mockResolvedValue({
-      userId: new Types.ObjectId(userId),
-      account: { _id: accountId, currency: 'USD' },
+    transactions.runForBudget.mockImplementation(
+      (
+        _budget,
+        _actor,
+        work: (session: ClientSession) => Promise<unknown>,
+        session: ClientSession,
+      ) => work(session),
+    );
+    transactions.accountForCreate.mockResolvedValue({
+      ownerType: 'user',
+      ownerId: new Types.ObjectId(userId),
+      _id: accountId,
+      currency: 'USD',
     });
-    snapshots.findOrCreateByAccountId.mockResolvedValue({
+    snapshots.prepareForBudget.mockResolvedValue({
       _id: snapshotId,
       accountId,
     });
     incomeModel.create.mockResolvedValue([
-      { toJSON: () => ({ _id: new Types.ObjectId() }) },
+      { toObject: () => ({ _id: new Types.ObjectId() }) },
     ]);
   });
 

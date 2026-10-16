@@ -3,8 +3,8 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { InjectConnection, InjectModel } from '@nestjs/mongoose';
-import { ClientSession, Connection, Model, Types } from 'mongoose';
+import { InjectModel } from '@nestjs/mongoose';
+import { ClientSession, Model, Types } from 'mongoose';
 import {
   hasValidMoneyPrecision,
   normalizeMoney,
@@ -28,13 +28,12 @@ export class TransfersService {
     @InjectModel(Transfer.name) private readonly model: Model<TransferDocument>,
     private readonly snapshots: AccountsSnapshotsService,
     private readonly transactions: TransactionsService,
-    @InjectConnection() private readonly connection: Connection,
   ) {}
 
   async create(userId: string, dto: CreateTransferDto) {
     if (dto.sourceAccountId === dto.destinationAccountId)
       throw new BadRequestException('Transfer accounts must be different.');
-    return this.inTransaction(async (session) => {
+    return this.inTransaction(userId, async (session) => {
       await this.transactions.lockAccounts(
         userId,
         [dto.sourceAccountId, dto.destinationAccountId],
@@ -162,7 +161,7 @@ export class TransfersService {
   }
 
   async update(userId: string, id: string, dto: UpdateTransferDto) {
-    return this.inTransaction(async (session) => {
+    return this.inTransaction(userId, async (session) => {
       const transfer = await this.findStored(userId, id, session);
       const sourceId = transfer.source.accountId.toString();
       const destinationId = transfer.destination.accountId.toString();
@@ -218,7 +217,7 @@ export class TransfersService {
   }
 
   async delete(userId: string, id: string) {
-    return this.inTransaction(async (session) => {
+    return this.inTransaction(userId, async (session) => {
       const transfer = await this.findStored(userId, id, session);
       await this.transactions.lockAccounts(
         userId,
@@ -305,12 +304,10 @@ export class TransfersService {
     });
   }
 
-  private async inTransaction<T>(work: (session: ClientSession) => Promise<T>) {
-    const session = await this.connection.startSession();
-    try {
-      return await session.withTransaction(() => work(session));
-    } finally {
-      await session.endSession();
-    }
+  private inTransaction<T>(
+    userId: string,
+    work: (session: ClientSession) => Promise<T>,
+  ) {
+    return this.transactions.runForBudget(personalBudget(userId), userId, work);
   }
 }

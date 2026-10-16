@@ -1,8 +1,12 @@
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { AccountsModule } from '../accounts/accounts.module';
+import { AccountsSnapshotsModule } from '../accounts-snapshots/accounts-snapshots.module';
 import { TransactionsModule } from '../transactions/transactions.module';
 import { GroupsModule } from '../groups/groups.module';
+import { BudgetsModule } from '../budgets/budgets.module';
+import { ExpenseCategoriesModule } from '../expense-categories/expense-categories.module';
+import { ExpenseLimitsModule } from '../expense-limits/expense-limits.module';
 import {
   AccountSnapshot,
   AccountsSnapshotsSchema,
@@ -15,8 +19,6 @@ import {
   ExpenseLimit,
   ExpenseLimitSchema,
 } from '../expense-limits/schemas/expense-limit.schema';
-import { BudgetAccessService } from './budget-access.service';
-import { GroupFinanceWriteService } from './group-finance-write.service';
 import { GroupWalletService } from './group-wallet.service';
 import { GroupTransactionsService } from './group-transactions.service';
 import { GroupSettingsService } from './group-settings.service';
@@ -25,8 +27,12 @@ import { GroupFinancesController } from './group-finances.controller';
 @Module({
   imports: [
     AccountsModule,
+    AccountsSnapshotsModule,
     TransactionsModule,
     GroupsModule,
+    BudgetsModule,
+    ExpenseCategoriesModule,
+    ExpenseLimitsModule,
     MongooseModule.forFeature([
       { name: AccountSnapshot.name, schema: AccountsSnapshotsSchema },
       { name: ExpenseCategory.name, schema: ExpenseCategorySchema },
@@ -35,8 +41,6 @@ import { GroupFinancesController } from './group-finances.controller';
   ],
   controllers: [GroupFinancesController],
   providers: [
-    BudgetAccessService,
-    GroupFinanceWriteService,
     GroupWalletService,
     GroupTransactionsService,
     GroupSettingsService,

@@ -84,6 +84,7 @@ describe('Group finances development seed (real replica set)', () => {
       manageAccounts: true,
       manageCategories: true,
       manageLimits: true,
+      manageTransactions: false,
     });
     expect(
       await fixture.connection.collection('groupinvitations').countDocuments({

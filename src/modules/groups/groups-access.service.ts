@@ -46,19 +46,32 @@ export class GroupsAccessService {
     permission: GroupPermission,
     session?: ClientSession,
   ) {
+    const { group, permissions } = await this.memberContext(
+      groupId,
+      userId,
+      session,
+    );
+    if (!permissions[permission])
+      throw new ForbiddenException('Group permission required');
+    return group;
+  }
+  async memberContext(
+    groupId: string,
+    userId: string,
+    session?: ClientSession,
+  ) {
     const group = await this.requireMember(groupId, userId, session);
     const membership = await this.memberships
       .findOne({ groupId, userId, status: 'active' })
       .session(session ?? null);
     if (!membership) throw new NotFoundException('Group not found');
-    if (
-      !effectivePermissions(
+    return {
+      group,
+      permissions: effectivePermissions(
         group.ownerId.equals(userId),
         membership.permissions,
-      )[permission]
-    )
-      throw new ForbiddenException('Group permission required');
-    return group;
+      ),
+    };
   }
   async serializeMutation(groupId: string, session: ClientSession) {
     const group = await this.groups.findOneAndUpdate(
