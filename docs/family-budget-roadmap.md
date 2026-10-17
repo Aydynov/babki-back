@@ -8,11 +8,11 @@
 
 ## Текущая точка
 
-- Завершены этапы **01 — финансовые права**, **02 — общие механизмы финансов** **03 — валюты и отчёты** и **04 — несколько счетов и накопления**, все четыре цикла закрыты.
+- Завершены этапы **01 — финансовые права**, **02 — общие механизмы финансов** **03 — валюты и отчёты** и **04 — несколько счетов и накопления**, и **05 — переводы внутри группы**, все пять циклов закрыты.
 - Архив: [add-group-financial-management-permission](../openspec/changes/archive/2026-10-17-add-group-financial-management-permission/proposal.md).
-- Архив этапа 02: [unify-budget-financial-core](../openspec/changes/archive/2026-10-17-unify-budget-financial-core/proposal.md). Архив этапа 03: [add-group-currencies-and-report-contract](../openspec/changes/archive/2026-10-17-add-group-currencies-and-report-contract/proposal.md). Архив этапа 04: [add-group-accounts-and-savings](../openspec/changes/archive/2026-10-17-add-group-accounts-and-savings/proposal.md). Активен change этапа **05: переводы внутри группы** — [add-group-account-transfers](../openspec/changes/add-group-account-transfers/proposal.md). Реализация и все проверки завершены. Следующий порядок: коммит реализации → sync main specs → архив.
-- Этап 05 реализован и проверен; предстоят коммит и архив. Этапы 06–10 запланированы, их OpenSpec-артефакты ещё не созданы.
-- Этапы 01–04 реализованы и проверены локальными unit/e2e; миграций нет, развёрнутый API не проверялся.
+- Архив этапа 02: [unify-budget-financial-core](../openspec/changes/archive/2026-10-17-unify-budget-financial-core/proposal.md). Архив этапа 03: [add-group-currencies-and-report-contract](../openspec/changes/archive/2026-10-17-add-group-currencies-and-report-contract/proposal.md). Архив этапа 04: [add-group-accounts-and-savings](../openspec/changes/archive/2026-10-17-add-group-accounts-and-savings/proposal.md). Архив этапа 05: [add-group-account-transfers](../openspec/changes/archive/2026-10-17-add-group-account-transfers/proposal.md). Активных change нет. Следующее действие — отдельное планирование этапа 06, предпросмотр приглашения.
+- Этап 05 реализован, проверен, зафиксирован коммитом до архивирования; цикл закрыт. Этапы 06–10 запланированы, их OpenSpec-артефакты ещё не созданы.
+- Этапы 01–05 реализованы и проверены локальными unit/e2e; миграций нет, развёрнутый API не проверялся.
 
 Этапы 01–02 зафиксированы коммитом `d1176da` — `Unified budget finances and added transaction permissions`.
 
@@ -208,7 +208,7 @@ Dev-данные: обновить seeds/fixtures и описать их пер�
 - [x] Создан change.
 - [x] Применён.
 - [x] Тестирование и build успешны; результаты записаны.
-- [ ] Архивирован; main specs синхронизированы.
+- [x] Архивирован; main specs синхронизированы.
 
 Объём: расширить существующие Transfer и его source/destination effects на BudgetContext; общий сервис перевода для личного/группового бюджета. Создание/чтение/изменение/отмена, history/filter, права manageTransactions, два счёта одного бюджета, обе валюты и суммы при обмене. Отчёты учитывают движения balance/saving и transfersIn/Out по общей согласованной формуле без фиктивных дохода/расхода.
 
@@ -218,7 +218,7 @@ Dev-данные: обновить seeds/fixtures и описать их пер�
 
 Личный ↔ групповой бюджет **не входит** в этот change. Это отдельное продуктовое решение и будущий change при явном включении: доступ к обоим бюджетам, видимость взносов и защита от двойного учёта.
 
-Журнал подготовки (2026-10-17): этап 04 закоммичен как `fac8ec5`. Изучены Transfer/source-destination effects, TransfersService create/update/delete/list, общие account locks, групповой ledger и ReportsService.aggregateTransfers. Требуется расширить существующий Transfer/TransfersService на BudgetContext, учитывать обе стороны в ledger/history/filter и подключить уже существующую отчётную агрегацию без второго движка. Ответы пользователя получены и отражены в контракте. Созданы [proposal](../openspec/changes/add-group-account-transfers/proposal.md), [design](../openspec/changes/add-group-account-transfers/design.md), четыре delta specs (account-transfers, group-transactions, group-wallet, group-budget-settings) и [tasks](../openspec/changes/add-group-account-transfers/tasks.md), 18 задач. `openspec validate add-group-account-transfers --strict --no-interactive` — valid, exit code 0; status — 4/4 planning artifacts complete. Применение, unit/e2e/build и архивирование этапа 05 не выполнялись; код после коммита этапа 04 не менялся. Следующий шаг — apply этапа 05; этап 06 ещё не создан.
+Журнал подготовки (2026-10-17): этап 04 закоммичен как `fac8ec5`. Изучены Transfer/source-destination effects, TransfersService create/update/delete/list, общие account locks, групповой ledger и ReportsService.aggregateTransfers. Требуется расширить существующий Transfer/TransfersService на BudgetContext, учитывать обе стороны в ledger/history/filter и подключить уже существующую отчётную агрегацию без второго движка. Ответы пользователя получены и отражены в контракте. Созданы [proposal](../openspec/changes/archive/2026-10-17-add-group-account-transfers/proposal.md), [design](../openspec/changes/archive/2026-10-17-add-group-account-transfers/design.md), четыре delta specs (account-transfers, group-transactions, group-wallet, group-budget-settings) и [tasks](../openspec/changes/archive/2026-10-17-add-group-account-transfers/tasks.md), 18 задач. `openspec validate add-group-account-transfers --strict --no-interactive` — valid, exit code 0; status — 4/4 planning artifacts complete. Применение, unit/e2e/build и архивирование этапа 05 не выполнялись; код после коммита этапа 04 не менялся. Следующий шаг — apply этапа 05; этап 06 ещё не создан.
 
 В design отдельно зафиксированы обратимость отмены по текущему личному правилу (возможен отрицательный destination после расходования зачисления), строгая проверка обеих дат открытия, запись новых/удалённых сумм перед ledger rebuild и сохранение личного snapshot carry. Существующая личная особенность currency-filter переводов не исправляется незаметно в групповом change.
 
@@ -229,6 +229,8 @@ Dev-данные: обновить seeds/fixtures и описать их пер�
 Уточнённый пользователем порядок: **сначала коммит кода без co-authored, только затем sync и архивирование**. На текущей записи коммит и архив ещё не созданы; этап 06 не создан.
 
 Общая проверка: `npm run test -- --runInBand` — exit code 0, 54 suites / 315 tests passed (4.566 s); `npm run test:e2e -- --runInBand` — exit code 0, 31 suites / 243 tests passed (141.023 s); `npm run build` — exit code 0. HTTP/e2e используют временные локальные MongoDB replica sets и loopback-серверы; разрешение сокетов предоставлено отдельно. Prettier check и ESLint без --fix для 19 затронутых TS-файлов (с --no-warn-ignored для unit-specs) — exit code 0; `git diff --check` — exit code 0. `openspec validate add-group-account-transfers --strict --no-interactive` — valid, exit code 0. 18/18 задач выполнены. Код готов к коммиту; change остаётся активным до его создания.
+
+Завершение (2026-10-17): сначала создан коммит реализации `b971aef` — `Added group account transfers`, без co-authored; после него синхронизированы account-transfers, group-transactions, group-wallet и group-budget-settings, затем change перемещён в `openspec/changes/archive/2026-10-17-add-group-account-transfers/`. При финальной сверке в delta исправлено документальное имя поля type → transactionType согласно реальному DTO и HTTP-тестам. Все прежние сценарии сохранены; Purpose сохранены (account-transfers уточнён при применении до коммита). `openspec validate --specs --no-interactive` — exit code 0, 15 passed / 0 failed; остаются существующие предупреждения длинных требований >500 символов. `openspec validate add-group-account-transfers --strict --no-interactive` перед переносом — valid, exit code 0. После переноса `openspec list --json` — changes=[], exit code 0; `git diff --check` — exit code 0. Архивирование, sync и эта запись выполнены после коммита и пока не закоммичены. Этап 06 не создан; следующий шаг — его отдельное планирование.
 
 ## 06. Предпросмотр приглашения
 

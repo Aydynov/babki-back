@@ -54,7 +54,7 @@
 - **THEN** возвращается 404 без финансовых изменений; межбюджетный перевод не создаётся даже при доступе к обоим бюджетам
 
 ### Requirement: Group transfer history contract
-Действующие участники SHALL читать пагинированный список и детали переводов, включая записи бывших авторов и архивных счетов. DTO SHALL содержать _id, type=transfer, createdBy, transactionDate, source/destination с accountId/snapshotId/currency/amount и effectiveRate с baseCurrency/quoteCurrency/rate. Общая история SHALL использовать тот же денежный DTO. Удалённые переводы SHALL исключаться из обычных выдач и сумм.
+Действующие участники SHALL читать пагинированный список и детали переводов, включая записи бывших авторов и архивных счетов. DTO SHALL содержать _id, transactionType=transfer, createdBy, transactionDate, source/destination с accountId/snapshotId/currency/amount и effectiveRate с baseCurrency/quoteCurrency/rate. Общая история SHALL использовать тот же денежный DTO. Удалённые переводы SHALL исключаться из обычных выдач и сумм.
 
 #### Scenario: Either account or currency
 - **WHEN** создан перевод RUB balance → USD saving
