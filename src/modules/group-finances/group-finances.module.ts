@@ -20,6 +20,7 @@ import {
   ExpenseLimit,
   ExpenseLimitSchema,
 } from '../expense-limits/schemas/expense-limit.schema';
+import { GroupTransfersService } from './group-transfers.service';
 import { GroupWalletService } from './group-wallet.service';
 import { GroupTransactionsService } from './group-transactions.service';
 import { GroupSettingsService } from './group-settings.service';
@@ -43,6 +44,7 @@ import { GroupFinancesController } from './group-finances.controller';
   ],
   controllers: [GroupFinancesController],
   providers: [
+    GroupTransfersService,
     GroupWalletService,
     GroupTransactionsService,
     GroupSettingsService,

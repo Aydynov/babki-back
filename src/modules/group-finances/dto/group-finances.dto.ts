@@ -110,8 +110,9 @@ export class GroupTransactionsQueryDto extends PaginationQueryDto {
   @ValidateIf(optional) @IsMongoId() accountId?: string;
   @ValidateIf(optional) @IsDateString({ strict: true }) fromDate?: string;
   @ValidateIf(optional) @IsDateString({ strict: true }) toDate?: string;
-  @ValidateIf(optional) @IsIn(['income', 'expense']) transactionType?:
-    'income' | 'expense';
+  @ValidateIf(optional)
+  @IsIn(['income', 'expense', 'transfer'])
+  transactionType?: 'income' | 'expense' | 'transfer';
 }
 export class GroupExpensesQueryDto extends GroupTransactionsQueryDto {
   @ValidateIf(optional) @IsMongoId() categoryId?: string;

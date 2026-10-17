@@ -56,7 +56,11 @@ export class AccountsSnapshotsService {
       {
         $match: {
           ...budgetFilter(account),
-          accountId: account._id,
+          $or: [
+            { accountId: account._id },
+            { 'source.accountId': account._id },
+            { 'destination.accountId': account._id },
+          ],
           deletedAt: null,
           transactionDate: { $lte: date },
         },
@@ -67,9 +71,21 @@ export class AccountsSnapshotsService {
           total: {
             $sum: {
               $cond: [
-                { $eq: ['$type', 'expense'] },
-                { $multiply: ['$amount', -1] },
-                '$amount',
+                { $eq: ['$type', 'transfer'] },
+                {
+                  $cond: [
+                    { $eq: ['$source.accountId', account._id] },
+                    { $multiply: ['$source.amount', -1] },
+                    '$destination.amount',
+                  ],
+                },
+                {
+                  $cond: [
+                    { $eq: ['$type', 'expense'] },
+                    { $multiply: ['$amount', -1] },
+                    '$amount',
+                  ],
+                },
               ],
             },
           },

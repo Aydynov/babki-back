@@ -50,13 +50,14 @@ describe('Group finances development seed (real replica set)', () => {
         ownerType: 'group',
         ownerId: { $in: groupIds },
       }),
-    ).toBe(8);
+    ).toBe(9);
 
     for (const collection of ['accounts', 'transactions', 'expenselimits']) {
       expect(
         await fixture.connection.collection(collection).countDocuments({
           ownerType: 'group',
           ownerId: { $in: groupIds },
+          type: { $ne: 'transfer' },
           currency: { $ne: 'USD' },
         }),
       ).toBe(0);
@@ -79,7 +80,7 @@ describe('Group finances development seed (real replica set)', () => {
       expect(reserves[0]).toMatchObject({
         name: 'Family reserve',
         type: 'saving',
-        amount: 50000,
+        amount: 51000,
       });
       await request(
         fixture.app.getHttpServer() as Parameters<typeof request>[0],
@@ -88,7 +89,7 @@ describe('Group finances development seed (real replica set)', () => {
         .auth(member.token, { type: 'bearer' })
         .expect(200)
         .expect(({ body }: { body: { amount: number } }) =>
-          expect(body.amount).toBe(50000),
+          expect(body.amount).toBe(51000),
         );
       const response = await request(
         fixture.app.getHttpServer() as Parameters<typeof request>[0],
@@ -104,10 +105,10 @@ describe('Group finances development seed (real replica set)', () => {
           currency: 'USD',
           incomes: 180000,
           expenses: 27250.5,
-          balance: 292749.5,
-          saving: 50000,
-          transfersIn: 0,
-          transfersOut: 0,
+          balance: 291749.5,
+          saving: 51000,
+          transfersIn: 1000,
+          transfersOut: 1000,
         },
       ]);
       expect(rows[0].currencies[0].expensesByCategory).toEqual(
@@ -118,6 +119,61 @@ describe('Group finances development seed (real replica set)', () => {
         ]),
       );
     }
+
+    const transfer = await fixture.connection
+      .collection('transactions')
+      .findOne({
+        ownerType: 'group',
+        ownerId: new Types.ObjectId(result.family.id),
+        type: 'transfer',
+      });
+    const reserve = await fixture.connection.collection('accounts').findOne({
+      ownerType: 'group',
+      ownerId: new Types.ObjectId(result.family.id),
+      name: 'Family reserve',
+    });
+    expect(transfer).toMatchObject({
+      ownerType: 'group',
+      ownerId: new Types.ObjectId(result.family.id),
+      type: 'transfer',
+      createdBy: new Types.ObjectId(alex.id),
+      description: 'Пополнение семейного резерва',
+      transactionDate: new Date('2024-03-18T00:00:00.000Z'),
+      source: {
+        accountId: new Types.ObjectId(result.family.accountId),
+        amount: 1000,
+        currency: 'USD',
+        snapshotId: expect.any(Types.ObjectId) as Types.ObjectId,
+      },
+      destination: {
+        accountId: reserve!._id,
+        amount: 1000,
+        currency: 'USD',
+        snapshotId: expect.any(Types.ObjectId) as Types.ObjectId,
+      },
+    });
+    expect(transfer).not.toHaveProperty('participantId');
+    expect(transfer).not.toHaveProperty('currency');
+    expect(transfer).not.toHaveProperty('amount');
+    for (const side of [transfer!.source, transfer!.destination] as {
+      snapshotId: Types.ObjectId;
+      accountId: Types.ObjectId;
+    }[]) {
+      expect(
+        await fixture.connection.collection('accountsnapshots').findOne({
+          _id: side.snapshotId,
+        }),
+      ).toMatchObject({ accountId: side.accountId });
+    }
+    await request(fixture.app.getHttpServer() as Parameters<typeof request>[0])
+      .get(
+        `/api/v1/groups/${result.family.id}/accounts/${result.family.accountId}`,
+      )
+      .auth(alex.token, { type: 'bearer' })
+      .expect(200)
+      .expect(({ body }: { body: { amount: number } }) =>
+        expect(body.amount).toBe(271749.5),
+      );
 
     const attributedExpense = await fixture.connection
       .collection('transactions')

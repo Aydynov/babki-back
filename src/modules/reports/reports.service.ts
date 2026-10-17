@@ -187,9 +187,7 @@ export class ReportsService {
     };
     const [financial, movements] = await Promise.all([
       this.aggregateFinancial(budget, grouping, range, filterIds),
-      budget.ownerType === 'user'
-        ? this.aggregateTransfers(budget, grouping, range)
-        : Promise.resolve([]),
+      this.aggregateTransfers(budget, grouping, range),
     ]);
     const totals = this.toTotals(financial, movements);
     return Promise.all(

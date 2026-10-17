@@ -267,7 +267,7 @@ describe('personal transactions boundary', () => {
     },
   );
 
-  it('retains group account filters without personal transfer alternatives or userId', () => {
+  it('matches either group transfer account without a personal userId', () => {
     const budget = groupBudget(userId);
     expect(
       service.buildFilterForBudget(budget, {
@@ -277,7 +277,11 @@ describe('personal transactions boundary', () => {
     ).toEqual({
       ...budget,
       deletedAt: null,
-      accountId: new Types.ObjectId(first),
+      $or: [
+        { accountId: new Types.ObjectId(first) },
+        { 'source.accountId': new Types.ObjectId(first) },
+        { 'destination.accountId': new Types.ObjectId(first) },
+      ],
       participantId: new Types.ObjectId(second),
     });
   });

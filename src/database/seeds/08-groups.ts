@@ -2,6 +2,7 @@ import { INestApplicationContext } from '@nestjs/common';
 import { getModelToken } from '@nestjs/mongoose';
 import { createHash } from 'node:crypto';
 import { Model } from 'mongoose';
+import { GroupTransfersService } from '../../modules/group-finances/group-transfers.service';
 import { GroupSettingsService } from '../../modules/group-finances/group-settings.service';
 import { GroupTransactionsService } from '../../modules/group-finances/group-transactions.service';
 import { GroupWalletService } from '../../modules/group-finances/group-wallet.service';
@@ -73,6 +74,7 @@ export async function seedGroups(
     wallets,
     settings,
     transactions,
+    app.get(GroupTransfersService),
     family,
     users,
     anchorDate,
@@ -249,6 +251,7 @@ async function seedFamilyFinances(
   wallets: GroupWalletService,
   settings: GroupSettingsService,
   transactions: GroupTransactionsService,
+  transfers: GroupTransfersService,
   group: GroupFixture,
   users: SeedUserMap,
   anchorDate: Date,
@@ -270,7 +273,7 @@ async function seedFamilyFinances(
     amount: 20000,
     openedAt: getSeedDate(-2, 1, anchorDate),
   });
-  await wallets.create(group.id, group.ownerId, {
+  const reserve = await wallets.create(group.id, group.ownerId, {
     name: 'Family reserve',
     type: 'saving',
     currency: 'USD',
@@ -324,6 +327,14 @@ async function seedFamilyFinances(
     amount: 3200,
     transactionDate: getSeedDate(0, 15, anchorDate),
     description: 'Исторический расход бывшего участника',
+  });
+  await transfers.create(group.id, group.ownerId, {
+    sourceAccountId: group.accountId,
+    destinationAccountId: String(reserve._id),
+    sourceAmount: 1000,
+    destinationAmount: 1000,
+    transactionDate: getSeedDate(0, 18, anchorDate),
+    description: 'Пополнение семейного резерва',
   });
 }
 

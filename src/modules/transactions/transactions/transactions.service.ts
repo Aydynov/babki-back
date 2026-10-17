@@ -25,6 +25,8 @@ import {
   TransactionDocument,
   TransactionType,
 } from '../schemas/transaction.schema';
+import { Transfer } from '../schemas/transfer.schema';
+import { transferResponse } from '../transfers/transfer-response';
 import { activeTransactionFilter } from './active-transaction.filter';
 
 export type FinancialTransaction = Transaction & {
@@ -103,7 +105,19 @@ export class TransactionsService {
       lookup.lean().exec(),
       model.countDocuments(filter),
     ]);
-    return { items, total, page, limit };
+    return {
+      items:
+        budget.ownerType === 'group'
+          ? items.map((item) =>
+              item.type === 'transfer'
+                ? transferResponse(item as unknown as Transfer)
+                : item,
+            )
+          : items,
+      total,
+      page,
+      limit,
+    };
   }
 
   async findOne(
@@ -431,17 +445,39 @@ export class TransactionsService {
       category?: Types.ObjectId;
       snapshotId?: Types.ObjectId;
       accountId?: Types.ObjectId;
-      $or?: Record<string, Types.ObjectId>[];
-      $and?: Array<{ $or: Record<string, Types.ObjectId>[] }>;
+      $or?: Record<string, Types.ObjectId | string>[];
+      $and?: Array<{ $or: Record<string, Types.ObjectId | string>[] }>;
       deletedAt: null;
       currency?: string;
       participantId?: Types.ObjectId;
     } = { ...budgetFilter(budget), ...activeTransactionFilter };
 
+    const addAlternatives = (
+      choices: Record<string, Types.ObjectId | string>[],
+    ) => {
+      if (filter.$and) filter.$and.push({ $or: choices });
+      else if (filter.$or) {
+        filter.$and = [{ $or: filter.$or }, { $or: choices }];
+        delete filter.$or;
+      } else filter.$or = choices;
+    };
+
     if (query.categoryId) {
       filter.category = new Types.ObjectId(query.categoryId);
     }
-    if (query.currency) filter.currency = query.currency;
+    if (query.currency) {
+      if (
+        budget.ownerType === 'group' &&
+        query.transactionType !== 'income' &&
+        query.transactionType !== 'expense'
+      )
+        addAlternatives([
+          { currency: query.currency },
+          { 'source.currency': query.currency },
+          { 'destination.currency': query.currency },
+        ]);
+      else filter.currency = query.currency;
+    }
     if (query.participantId)
       filter.participantId = new Types.ObjectId(query.participantId);
 
@@ -449,24 +485,22 @@ export class TransactionsService {
       const snapshotId = new Types.ObjectId(query.snapshotId);
       if (
         query.transactionType === 'income' ||
-        query.transactionType === 'expense' ||
-        budget.ownerType === 'group'
+        query.transactionType === 'expense'
       )
         filter.snapshotId = snapshotId;
       else
-        filter.$or = [
+        addAlternatives([
           { snapshotId },
           { 'source.snapshotId': snapshotId },
           { 'destination.snapshotId': snapshotId },
-        ];
+        ]);
     }
 
     if (query.accountId) {
       const accountId = new Types.ObjectId(query.accountId);
       if (
         query.transactionType === 'income' ||
-        query.transactionType === 'expense' ||
-        budget.ownerType === 'group'
+        query.transactionType === 'expense'
       )
         filter.accountId = accountId;
       else {
@@ -475,10 +509,7 @@ export class TransactionsService {
           { 'source.accountId': accountId },
           { 'destination.accountId': accountId },
         ];
-        if (filter.$or) {
-          filter.$and = [{ $or: filter.$or }, { $or: accountFilters }];
-          delete filter.$or;
-        } else filter.$or = accountFilters;
+        addAlternatives(accountFilters);
       }
     }
 

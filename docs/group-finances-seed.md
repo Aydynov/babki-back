@@ -18,7 +18,7 @@ All users have password `Test1234!`:
 
 The seed creates:
 
-- `Семья Тестовых`: the existing `Family` balance account, a second `Family bank` balance account, a `Family reserve` saving account, categories, current-month limit, income, Alex's expense attributed to Maria, Maria's own expense and Elena's historical expense after she leaves.
+- `Семья Тестовых`: the existing `Family` balance account, a second `Family bank` balance account, a `Family reserve` saving account, categories, current-month limit, income, Alex's expense attributed to Maria, Maria's own expense, Elena's historical expense after she leaves, and Alex's USD 1000 transfer from `Family` to `Family reserve` on day 18 of the anchor month.
 - `North Studio`: its own wallet, category, income and an expense authored by Alex; Alex has only `manageCategories`.
 - `South Agency`: its own wallet, category, income and an expense authored by Alex; Alex has no delegated settings permissions, while Ivan has `manageAccounts` and `manageLimits`.
 - `Пустой бюджет`: no wallet or financial settings, plus a pending invitation. Its token is printed by the seed command.
@@ -43,10 +43,14 @@ Stage 04 adds two family accounts through the same account service: `Family bank
 opens with USD 20000 and `Family reserve` opens with USD 50000. Both open on the
 first day two months before the anchor month, matching the original family
 account. Alex and Maria can both read the reserve through the account list
-(`?type=saving`) and account details. The existing account identifiers and eight
-transactions across the active groups are preserved; no artificial transfers or
-reserve income/expense pairs are created. There are now five accounts across the
-four active groups (plus the retained account of the deleted group).
+(`?type=saving`) and account details. Stage 05 preserves the original account identifiers and eight income/expense
+transactions, and adds one real transfer through the shared transfer service.
+There are nine transactions and five accounts across the four active groups
+(plus the retained account and history of the deleted group). The transfer has
+Alex as `createdBy`, no `participantId` or top-level `amount`/`currency`, and
+source/destination effects each containing account and snapshot references,
+amount 1000 and currency USD. Its description is `Пополнение семейного резерва`;
+its effective rate is 1. No artificial income/expense pair is created.
 
 For the anchor month, `GET /api/v1/groups/:familyId/reports/months` with explicit
 `fromDate` and `toDate` spanning that month returns one USD bucket:
@@ -55,14 +59,17 @@ For the anchor month, `GET /api/v1/groups/:familyId/reports/months` with explici
 | ------------ | -------: |
 | incomes      |   180000 |
 | expenses     |  27250.5 |
-| balance      | 292749.5 |
-| saving       |    50000 |
-| transfersIn  |        0 |
-| transfersOut |        0 |
+| balance      | 291749.5 |
+| saving       |    51000 |
+| transfersIn  |     1000 |
+| transfersOut |     1000 |
 
-The original `Family` account remains USD 272749.5; `balance` adds the second
+The original `Family` account becomes USD 271749.5; `balance` adds the second
 account's USD 20000 and excludes the reserve. Food expenses remain USD 8450.5,
-home USD 15600 and leisure USD 3200. Opening amounts do not count as income.
+home USD 15600 and leisure USD 3200. Opening amounts and transfers do not count
+as income. Alex and Maria see these same totals. Category filters preserve the
+transfer movements and full account balances. These values describe the seed
+after day 18; a report ending before the transfer retains the earlier balances.
 These additions do not require a migration or a reset of existing databases;
 the destructive seed command above is only for deliberately rebuilding disposable
 local fixtures.

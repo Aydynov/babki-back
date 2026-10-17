@@ -34,13 +34,23 @@ BudgetsModule предоставляет доступ и координацию,
 
 Валюта неизменяема на счёте и наследуется операцией; initialAmount, amount, item.price, лимиты и групповые ledger/snapshots используют общие money utilities. Фиксированная точность 2 исключена из группового денежного пути. Личные DTO сохраняют прежние границы item.price/amount.
 
-ReportsService строит PeriodReport для обоих бюджетов: общие owner-scoped агрегации, currency totals и DTO. GroupReportsService проверяет доступ, категории и UTC-периоды и вызывает общий сервис. Политика остатка различается: группа использует balanceForBudget/ledger, личный бюджет — прежние snapshots. Отчёты групп суммируют saving-счета в saving, balance-счета в balance, включая архивные; transfersIn/transfersOut=0, saves отсутствует. Revenue и лимиты групп используют общие валютные агрегаты; rest лимита учитывает только ту же категорию и валюту.
+ReportsService строит PeriodReport для обоих бюджетов: общие owner-scoped агрегации, currency totals и DTO. GroupReportsService проверяет доступ, категории и UTC-периоды и вызывает общий сервис. Политика остатка различается: группа использует balanceForBudget/ledger, личный бюджет — прежние snapshots. Отчёты групп суммируют saving-счета в saving, balance-счета в balance, включая архивные; transfersIn/transfersOut учитывают стороны переводов в их валютах, saves отсутствует. Revenue и лимиты групп используют общие валютные агрегаты; rest лимита учитывает только ту же категорию и валюту.
 
 ## Проверка
 
 Characterization: `test/budget-core-compatibility.e2e-spec.ts` и `test/budget-settings-compatibility.e2e-spec.ts`, дополнительно действующие compatibility, boundaries, concurrency, lifecycle, multicurrency, plans/debts и report-history suites. Права и отзыв с прежним JWT проверяются group-financial-management и group-permissions. Финальная проверка — полные unit/e2e на временных replica sets и build.
 
-Этап 03 добавляет групповые валюты к существующим Account/Income/Expense/ExpenseLimit и общий построитель валютных отчётов. Этап 04 подключает несколько счетов, saving и общий rename/archive lifecycle. Переводы, планы и долги остаются последующим этапам.
+Этап 03 добавляет групповые валюты к существующим Account/Income/Expense/ExpenseLimit и общий построитель валютных отчётов. Этап 04 подключает несколько счетов, saving и общий rename/archive lifecycle. Этап 05 расширяет общие переводы на группу; планы и долги остаются последующим этапам.
+
+## Переводы этапа 05
+
+TransfersService предоставляет общие createForBudget/findAllForBudget/findOneForBudget/updateForBudget/deleteForBudget. Личные методы остаются адаптерами personalBudget/personalResponse, GroupTransfersService проверяет актуальное членство и author/owner/manageTransactions внутри BudgetWriteService.run. Одна Transfer discriminator-модель, обе существующие денежные стороны и общие account locks обслуживают оба бюджета; нового финансового CRUD/ledger нет.
+
+Создание сохраняет запись до effects; PATCH сохраняет новые суммы, DELETE — deletedAt/deletedBy до группового rebuild. Обе стороны и последующие снимки меняются в одной ClientSession. balanceForBudget расширяет существующий owner-scoped aggregate: accountId или source/destination.accountId, source со знаком минус, destination со знаком плюс. Валютная нормализация каждого счёта и конец месяца UTC сохранены. Личный путь по-прежнему применяет дельту к сохранённым снимкам/carry и прежнюю проверку средств; групповой проверяет ledger на дату создания и только положительный extraDebit при PATCH.
+
+TransactionsService использует общий filter builder для обеих сторон и AND-комбинаций account/currency; group mixed history использует тот же transferResponse/effectiveRate, что dedicated CRUD. Личные фильтры/сериализация сохранены. ReportsService.aggregateTransfers работает для user/group: source.amount в transfersOut, destination.amount в transfersIn соответствующих валют. Ни сторона, ни category-filter не превращает перевод в доход/расход; полные остатки включают архивные счета, удалённый перевод исключается.
+
+Проверки: personal-transfer-compatibility (характеризация до рефакторинга), group-transfers (HTTP), group-transfer-ledger-reports (даты/снимки/отчёты/rollback), group-transfers-concurrency (обе последовательности конкурентных мутаций/прав/архива, RESTRICT). Ошибка второго эффекта create/PATCH/DELETE откатывает запись, оба счёта и цепочки снимков. Реальная база не сбрасывается.
 
 
 В этапе 04 новые GroupAccountsQueryDto/RenameGroupAccountDto и маршруты служат адаптерами общих сервисов. GroupWalletService не рассчитывает balances и не хранит отдельную модель резерва. Архивирование, операции и отзыв полномочий сериализуются существующей group write-транзакцией; read-only история остаётся доступна. Смена имени архивного счёта допустима, финансовые create/PATCH/DELETE заморожены. Новые проверки: group-accounts-savings, group-account-lifecycle, group-savings-reports и расширенный seed e2e; личный календарь и snapshot carry сохранены.

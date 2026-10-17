@@ -12,6 +12,12 @@ import {
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../auth/interfaces/authenticated-user.interface';
 import { ParseObjectIdPipe } from '../../common/pipes/parse-object-id.pipe';
+import { GroupTransfersService } from './group-transfers.service';
+import {
+  CreateGroupTransferDto,
+  UpdateGroupTransferDto,
+  GroupTransfersQueryDto,
+} from './dto/group-transfers.dto';
 import { GroupWalletService } from './group-wallet.service';
 import { GroupTransactionsService } from './group-transactions.service';
 import { GroupSettingsService } from './group-settings.service';
@@ -38,6 +44,7 @@ import {
 @Controller('groups/:groupId')
 export class GroupFinancesController {
   constructor(
+    private readonly transfers: GroupTransfersService,
     private readonly wallet: GroupWalletService,
     private readonly transactions: GroupTransactionsService,
     private readonly settings: GroupSettingsService,
@@ -105,6 +112,58 @@ export class GroupFinancesController {
     @Param('id', ParseObjectIdPipe) id: string,
   ) {
     await this.wallet.remove(groupId, user.userId, id);
+  }
+
+  @Post('transfers')
+  createTransfer(
+    @Query() _query: EmptyGroupQueryDto,
+    @Param('groupId', ParseObjectIdPipe) groupId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: CreateGroupTransferDto,
+  ) {
+    return this.transfers.create(groupId, user.userId, dto);
+  }
+
+  @Get('transfers')
+  listTransfers(
+    @Query() query: GroupTransfersQueryDto,
+    @Param('groupId', ParseObjectIdPipe) groupId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.transfers.list(groupId, user.userId, query);
+  }
+
+  @Get('transfers/:id')
+  getTransfer(
+    @Query() _query: EmptyGroupQueryDto,
+    @Param('groupId', ParseObjectIdPipe) groupId: string,
+    @Param('id', ParseObjectIdPipe) id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.transfers.get(groupId, user.userId, id);
+  }
+
+  @Patch('transfers/:id')
+  updateTransfer(
+    @Query() _query: EmptyGroupQueryDto,
+    @Param('groupId', ParseObjectIdPipe) groupId: string,
+    @Param('id', ParseObjectIdPipe) id: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: UpdateGroupTransferDto,
+  ) {
+    return this.transfers.change(groupId, user.userId, id, dto);
+  }
+
+  @Delete('transfers/:id')
+  @HttpCode(204)
+  async deleteTransfer(
+    @Query() _query: EmptyGroupQueryDto,
+    @Body() _body: EmptyGroupQueryDto,
+    @Param('groupId', ParseObjectIdPipe) groupId: string,
+    @Param('id', ParseObjectIdPipe) id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    await this.transfers.change(groupId, user.userId, id);
   }
 
   @Get('expenses/revenue')
