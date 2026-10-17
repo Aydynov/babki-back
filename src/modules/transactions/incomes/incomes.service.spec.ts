@@ -15,6 +15,8 @@ describe('IncomesService transaction origin', () => {
     applyForBudget: jest.fn(),
   };
   const transactions = {
+    validateMoneyForBudget:
+      TransactionsService.prototype.validateMoneyForBudget,
     ensureUserExists: jest.fn(),
     accountForCreate: jest.fn(),
     lockAccountsForBudget: jest.fn(),

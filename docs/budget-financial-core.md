@@ -6,12 +6,12 @@
 
 | Поведение | Личный бюджет | Групповой бюджет |
 | --- | --- | --- |
-| Счета | несколько balance/saving, name/currency, defaultAccountId | один balance, без имени/валюты |
+| Счета | несколько balance/saving, name/currency, defaultAccountId | один balance, явные name/currency |
 | Остаток | сохранённые snapshots + дельта операции | initialAmount + активный ledger до даты |
 | Месячный снимок | существующее начало месяца/сохранённые даты | конец месяца UTC |
-| Деньги | точность валюты, прежнее округление | два знака до валютного change |
+| Деньги | точность валюты, прежнее округление | точность валюты через общие money utilities |
 | Расход | populated category, внутренние поля скрыты | category id, createdBy/participantId |
-| Лимит | currency, populated category, PATCH total | без currency, PATCH total/даты, UTC |
+| Лимит | currency, populated category, PATCH total | currency, PATCH total/даты, UTC |
 
 Общий механизм не заменяет личные снимки replay операций: прежний перенос может содержать начальные и исторические корректировки. Групповой amount нельзя брать из последнего месячного снимка: он может включать будущие операции. Схемы и данные сохраняются. HTTP снимков остаётся только для чтения.
 
@@ -30,8 +30,14 @@ BudgetsModule предоставляет доступ и координацию,
 
 Личные категории исключают архивные записи из списка, групповые сохраняют их в выдаче. Личный PATCH лимита изменяет только total, групповой также даты. Личный расчёт использования сохраняет существующее преобразование endDate через `.toString()` (с потерей миллисекунд); исправление этой границы относится к отдельному изменению поведения. Группа использует прежние включительные UTC-границы. Общая блокировка категории может увеличивать внутренний mutationVersion; это счётчик сериализации, не финансовая величина или новая возможность API.
 
+## Валютный контракт этапа 03
+
+Валюта неизменяема на счёте и наследуется операцией; initialAmount, amount, item.price, лимиты и групповые ledger/snapshots используют общие money utilities. Фиксированная точность 2 исключена из группового денежного пути. Личные DTO сохраняют прежние границы item.price/amount.
+
+ReportsService строит PeriodReport для обоих бюджетов: общие owner-scoped агрегации, currency totals и DTO. GroupReportsService проверяет доступ, категории и UTC-периоды и вызывает общий сервис. Политика остатка различается: группа использует balanceForBudget/ledger, личный бюджет — прежние snapshots. Отчёты групп пока возвращают saving/transfersIn/transfersOut=0, без saves. Revenue и лимиты групп используют общие валютные агрегаты; rest лимита учитывает только ту же категорию и валюту.
+
 ## Проверка
 
 Characterization: `test/budget-core-compatibility.e2e-spec.ts` и `test/budget-settings-compatibility.e2e-spec.ts`, дополнительно действующие compatibility, boundaries, concurrency, lifecycle, multicurrency, plans/debts и report-history suites. Права и отзыв с прежним JWT проверяются group-financial-management и group-permissions. Финальная проверка — полные unit/e2e на временных replica sets и build.
 
-Этот этап не добавляет групповые валюты, saving/переводы, планы/долги, archive/rename API или новые DTO. Этапы 03–09 расширят общие механизмы отдельно.
+Этап 03 добавляет групповые валюты к существующим Account/Income/Expense/ExpenseLimit и общий построитель валютных отчётов. saving/переводы, планы/долги и archive/rename API остаются последующим этапам.

@@ -224,7 +224,7 @@ describe('personal transactions boundary', () => {
       const account = {
         ...budget,
         _id: new Types.ObjectId(first),
-        currency: ownerType === 'user' ? 'USD' : undefined,
+        currency: 'USD',
       } as Awaited<ReturnType<TransactionsService['accountForBudget']>>;
       const row = {
         ...budget,

@@ -30,6 +30,8 @@ describe('ExpensesService shared budget operations', () => {
   const category = { findOneAndUpdate: jest.fn() };
   const snapshots = { prepareForBudget: jest.fn(), applyForBudget: jest.fn() };
   const transactions = {
+    validateMoneyForBudget:
+      TransactionsService.prototype.validateMoneyForBudget,
     runForBudget: jest.fn(),
     accountForCreate: jest.fn(),
     lockAccountsForBudget: jest.fn(),

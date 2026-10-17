@@ -57,7 +57,11 @@ describe('Delegated group transaction management', () => {
     }
     accountId = idOf(
       await api('post', `${base()}/accounts`)
-        .send({ openedAt: '2026-01-01T00:00:00Z' })
+        .send({
+          name: 'Family',
+          currency: 'USD',
+          openedAt: '2026-01-01T00:00:00Z',
+        })
         .expect(201),
     );
     categoryId = idOf(
@@ -153,9 +157,13 @@ describe('Delegated group transaction management', () => {
   it('keeps delegated financial management separate from settings and administrative access', async () => {
     await permissions(true).expect(200);
     for (const [method, path, body] of [
-      ['post', `${base()}/accounts`, {}],
+      ['post', `${base()}/accounts`, { name: 'Family', currency: 'USD' }],
       ['post', `${base()}/expense-categories`, { name: 'Denied' }],
-      ['post', `${base()}/expense-limits`, { categoryId, total: 10 }],
+      [
+        'post',
+        `${base()}/expense-limits`,
+        { categoryId, currency: 'USD', total: 10 },
+      ],
       [
         'patch',
         `${base()}/members/${ctx.users[2].id}/permissions`,
@@ -192,7 +200,11 @@ describe('Delegated group transaction management', () => {
     const otherId = (group.body as { id: string }).id;
     const otherAccount = idOf(
       await api('post', `/groups/${otherId}/accounts`)
-        .send({ openedAt: '2026-01-01T00:00:00Z' })
+        .send({
+          name: 'Family',
+          currency: 'USD',
+          openedAt: '2026-01-01T00:00:00Z',
+        })
         .expect(201),
     );
     const foreign = idOf(

@@ -1,5 +1,5 @@
 import { personalBudget } from 'src/common/utils/personal-budget.util';
-import { getCurrencyMinorUnits } from 'src/common/money/money';
+import { getCurrencyMinorUnits, normalizeMoney } from 'src/common/money/money';
 import {
   ConflictException,
   Injectable,
@@ -20,8 +20,6 @@ import {
   AccountSnapshotsDocument,
 } from './schemas/accounts-snapshots.schema';
 
-export const roundGroupMoney = (value: number) =>
-  Math.round((value + Number.EPSILON) * 100) / 100;
 export const utcMonthEnd = (date: Date) =>
   new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 1) - 1);
 
@@ -78,8 +76,9 @@ export class AccountsSnapshotsService {
         },
       },
     ]).session(session ?? null);
-    return roundGroupMoney(
+    return normalizeMoney(
       (account.initialAmount ?? 0) + (totals[0]?.total ?? 0),
+      account.currency!,
     );
   }
 

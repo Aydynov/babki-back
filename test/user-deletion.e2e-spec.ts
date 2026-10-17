@@ -125,7 +125,11 @@ describe('User deletion (real MongoDB replica set)', () => {
       .expect(200);
     const groupAccount = idOf(
       await owner
-        .post(`/groups/${groupId}/accounts`, { amount: 100 })
+        .post(`/groups/${groupId}/accounts`, {
+          name: 'Family',
+          currency: 'USD',
+          amount: 100,
+        })
         .expect(201),
     );
     const groupCategory = idOf(

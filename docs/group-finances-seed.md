@@ -36,3 +36,5 @@ The seed does not create a `deletion_pending` user or a user-deletion job. This
 keeps every seeded login usable until a deletion request is submitted explicitly.
 
 Dates are derived from the seed run month, so current reports and limits remain useful for manual checks. Group and personal records share category names safely because uniqueness is scoped by budget owner.
+
+Group wallets now have explicit name and USD currency, and group limits use USD. Income/expense currency is inherited from the wallet. Recreating disposable dev fixtures is required for the stage 03 currency contract; no automatic currency mapping of legacy amounts is performed.

@@ -50,6 +50,16 @@ describe('Group finances development seed (real replica set)', () => {
       }),
     ).toBe(8);
 
+    for (const collection of ['accounts', 'transactions', 'expenselimits']) {
+      expect(
+        await fixture.connection.collection(collection).countDocuments({
+          ownerType: 'group',
+          ownerId: { $in: groupIds },
+          currency: { $ne: 'USD' },
+        }),
+      ).toBe(0);
+    }
+
     const attributedExpense = await fixture.connection
       .collection('transactions')
       .findOne({

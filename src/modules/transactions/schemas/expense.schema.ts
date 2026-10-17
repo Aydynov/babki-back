@@ -12,7 +12,7 @@ export class ExpenseItem {
   @Prop({ required: true, trim: true })
   name: string;
 
-  @Prop({ required: true, min: 0.01 })
+  @Prop({ required: true, min: Number.EPSILON })
   price: number;
 
   @Prop({ required: true, min: Number.EPSILON })

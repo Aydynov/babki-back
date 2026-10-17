@@ -104,6 +104,8 @@ describe('Group finance concurrent transactions (real replica set)', () => {
     }
     accountId = idOf(
       await api('post', `${base()}/accounts`, 0, {
+        name: 'Family',
+        currency: 'USD',
         amount: 0,
         openedAt: '2026-01-01T00:00:00.000Z',
       }).expect(201),
@@ -339,6 +341,8 @@ describe('Group finance concurrent transactions (real replica set)', () => {
     await api('delete', `${base()}/accounts/${accountId}`).expect(204);
     const create = () =>
       api('post', `${base()}/accounts`, 0, {
+        name: 'Family',
+        currency: 'USD',
         openedAt: '2026-01-01T00:00:00.000Z',
       });
     expect((await race(create, create)).map((r) => r.status)).toEqual([
@@ -385,6 +389,7 @@ describe('Group finance concurrent transactions (real replica set)', () => {
   it('rejects a concurrent overlapping limit after the first commit', async () => {
     const limit = (startDate: string, endDate: string) =>
       api('post', `${base()}/expense-limits`, 0, {
+        currency: 'USD',
         categoryId,
         total: 100,
         startDate,

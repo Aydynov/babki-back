@@ -72,8 +72,8 @@ export class AccountsService {
   ) {
     const personal = budget.ownerType === 'user';
     const amount = dto.amount ?? 0;
-    const currency = personal ? normalizeCurrency(dto.currency!) : undefined;
-    if (currency && !hasValidMoneyPrecision(amount, currency))
+    const currency = normalizeCurrency(dto.currency!);
+    if (!hasValidMoneyPrecision(amount, currency))
       throw new BadRequestException('Amount exceeds currency precision.');
     if (
       !personal &&
@@ -87,7 +87,8 @@ export class AccountsService {
         {
           ...budgetFilter(budget),
           type: personal ? dto.type : 'balance',
-          ...(personal ? { name: dto.name!.trim(), currency } : {}),
+          name: dto.name!.trim(),
+          currency,
           initialAmount: amount,
           openedAt: dto.openedAt ? new Date(dto.openedAt) : new Date(),
         },
@@ -112,7 +113,7 @@ export class AccountsService {
       await this.usersService.selectFirstDefaultAccount(
         String(budget.ownerId),
         createdEntity._id,
-        currency!,
+        currency,
         session,
       );
     }

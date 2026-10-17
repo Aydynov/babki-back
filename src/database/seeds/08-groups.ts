@@ -256,6 +256,8 @@ async function seedFamilyFinances(
   group.accountId = String(
     (
       await wallets.create(group.id, group.ownerId, {
+        name: 'Family',
+        currency: 'USD',
         amount: 120000,
         openedAt: getSeedDate(-2, 1, anchorDate),
       })
@@ -270,10 +272,11 @@ async function seedFamilyFinances(
       name,
       color,
     });
-    group.categories[name] = String(category!._id);
+    group.categories[name] = String(category._id);
   }
   const month = getSeedMonthRange(0, anchorDate);
   await settings.saveLimit(group.id, group.ownerId, {
+    currency: 'USD',
     categoryId: group.categories['Продукты'],
     total: 50000,
     startDate: month.startDate,
@@ -324,6 +327,8 @@ async function seedOrganizationFinances(
   group.accountId = String(
     (
       await wallets.create(group.id, group.ownerId, {
+        name: 'Family',
+        currency: 'USD',
         amount: 0,
         openedAt: getSeedDate(-1, 1, anchorDate),
       })
@@ -333,7 +338,7 @@ async function seedOrganizationFinances(
     name: categoryName,
     color: '#7B61FF',
   });
-  group.categories[categoryName] = String(category!._id);
+  group.categories[categoryName] = String(category._id);
   await transactions.create(group.id, group.ownerId, 'income', {
     accountId: group.accountId,
     amount: income,

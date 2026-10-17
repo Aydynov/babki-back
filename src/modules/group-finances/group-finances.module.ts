@@ -3,6 +3,7 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { AccountsModule } from '../accounts/accounts.module';
 import { AccountsSnapshotsModule } from '../accounts-snapshots/accounts-snapshots.module';
 import { TransactionsModule } from '../transactions/transactions.module';
+import { ReportsModule } from '../reports/reports.module';
 import { GroupsModule } from '../groups/groups.module';
 import { BudgetsModule } from '../budgets/budgets.module';
 import { ExpenseCategoriesModule } from '../expense-categories/expense-categories.module';
@@ -26,6 +27,7 @@ import { GroupReportsService } from './group-reports.service';
 import { GroupFinancesController } from './group-finances.controller';
 @Module({
   imports: [
+    ReportsModule,
     AccountsModule,
     AccountsSnapshotsModule,
     TransactionsModule,

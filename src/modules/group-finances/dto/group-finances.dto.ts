@@ -7,6 +7,7 @@ import {
   IsIn,
   IsMongoId,
   IsNumber,
+  IsPositive,
   IsString,
   MaxLength,
   Min,
@@ -15,21 +16,37 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { PaginationQueryDto } from '../../../common/dto/pagination-query.dto';
-import { ExpenseItemDto } from '../../transactions/expenses/dto/expense-item.dto';
+import { ExpenseItemFieldsDto } from '../../transactions/expenses/dto/expense-item.dto';
+import { SUPPORTED_CURRENCY_CODES } from 'src/common/money/money';
 const optional = (_: unknown, value: unknown) => value !== undefined;
 export class CreateGroupAccountDto {
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.trim() : value,
+  )
+  @IsString()
+  @MinLength(1)
+  @MaxLength(100)
+  name: string;
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.trim().toUpperCase() : value,
+  )
+  @IsIn(SUPPORTED_CURRENCY_CODES)
+  currency: string;
   @ValidateIf(optional)
   @Type(() => Number)
-  @IsNumber({ maxDecimalPlaces: 2 })
+  @IsNumber()
   @Min(0)
   amount?: number;
   @ValidateIf(optional) @IsDateString({ strict: true }) openedAt?: string;
 }
+export class GroupExpenseItemDto extends ExpenseItemFieldsDto {
+  @Type(() => Number) @IsNumber() @IsPositive() price: number;
+}
 export class CreateGroupIncomeDto {
   @IsMongoId() accountId: string;
   @Type(() => Number)
-  @IsNumber({ maxDecimalPlaces: 2 })
-  @Min(0.01)
+  @IsNumber()
+  @IsPositive()
   amount: number;
   @IsDateString({ strict: true }) transactionDate: string;
   @ValidateIf(optional) @IsString() @MaxLength(1000) description?: string;
@@ -41,14 +58,14 @@ export class CreateGroupExpenseDto extends CreateGroupIncomeDto {
   @ValidateIf(optional)
   @IsArray()
   @ValidateNested({ each: true })
-  @Type(() => ExpenseItemDto)
-  items?: ExpenseItemDto[];
+  @Type(() => GroupExpenseItemDto)
+  items?: GroupExpenseItemDto[];
 }
 export class UpdateGroupIncomeDto {
   @ValidateIf(optional)
   @Type(() => Number)
-  @IsNumber({ maxDecimalPlaces: 2 })
-  @Min(0.01)
+  @IsNumber()
+  @IsPositive()
   amount?: number;
   @ValidateIf(optional) @IsString() @MaxLength(1000) description?: string;
 }
@@ -59,10 +76,16 @@ export class UpdateGroupExpenseDto extends UpdateGroupIncomeDto {
   @ValidateIf(optional)
   @IsArray()
   @ValidateNested({ each: true })
-  @Type(() => ExpenseItemDto)
-  items?: ExpenseItemDto[];
+  @Type(() => GroupExpenseItemDto)
+  items?: GroupExpenseItemDto[];
 }
 export class GroupTransactionsQueryDto extends PaginationQueryDto {
+  @ValidateIf(optional)
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.trim().toUpperCase() : value,
+  )
+  @IsIn(SUPPORTED_CURRENCY_CODES)
+  currency?: string;
   @ValidateIf(optional) @IsMongoId() accountId?: string;
   @ValidateIf(optional) @IsDateString({ strict: true }) fromDate?: string;
   @ValidateIf(optional) @IsDateString({ strict: true }) toDate?: string;
@@ -104,20 +127,31 @@ export class UpdateGroupCategoryDto {
 }
 export class CreateGroupLimitDto {
   @IsMongoId() categoryId: string;
-  @Type(() => Number) @IsNumber({ maxDecimalPlaces: 2 }) @Min(0) total: number;
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.trim().toUpperCase() : value,
+  )
+  @IsIn(SUPPORTED_CURRENCY_CODES)
+  currency: string;
+  @Type(() => Number) @IsNumber() @Min(0) total: number;
   @ValidateIf(optional) @IsDateString({ strict: true }) startDate?: string;
   @ValidateIf(optional) @IsDateString({ strict: true }) endDate?: string;
 }
 export class UpdateGroupLimitDto {
   @ValidateIf(optional)
   @Type(() => Number)
-  @IsNumber({ maxDecimalPlaces: 2 })
+  @IsNumber()
   @Min(0)
   total?: number;
   @ValidateIf(optional) @IsDateString({ strict: true }) startDate?: string;
   @ValidateIf(optional) @IsDateString({ strict: true }) endDate?: string;
 }
 export class GroupLimitsQueryDto {
+  @ValidateIf(optional)
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.trim().toUpperCase() : value,
+  )
+  @IsIn(SUPPORTED_CURRENCY_CODES)
+  currency?: string;
   @ValidateIf(optional) @IsMongoId() categoryId?: string;
   @ValidateIf(optional) @IsDateString({ strict: true }) periodDate?: string;
 }

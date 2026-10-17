@@ -68,7 +68,7 @@ describe('Personal and group finance compatibility', () => {
       .expect(201);
     const groupId = (group.body as { id: string }).id;
     const wallet = await api('post', `/groups/${groupId}/accounts`)
-      .send({ amount: 500, openedAt: date })
+      .send({ name: 'Family', currency: 'USD', amount: 500, openedAt: date })
       .expect(201);
     const groupAccountId = (wallet.body as { _id: string })._id;
     const groupCategory = await api(

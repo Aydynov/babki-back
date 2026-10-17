@@ -16,12 +16,3 @@ export interface PeriodReport {
   period: string;
   currencies: CurrencyPeriodReport[];
 }
-export interface SingleCurrencyPeriodReport {
-  period: string;
-  expenses: number;
-  incomes: number;
-  saves: number;
-  saving: number;
-  balance: number;
-  expensesByCategory: CategoryExpense[];
-}

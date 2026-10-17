@@ -3,14 +3,10 @@ import { ClientSession, Types } from 'mongoose';
 import { groupBudget } from 'src/common/budget/budget-context';
 import { AccountsService } from '../accounts/accounts/accounts.service';
 import { Account } from '../accounts/schemas/accounts.schema';
-import {
-  AccountsSnapshotsService,
-  roundGroupMoney,
-} from '../accounts-snapshots/accounts-snapshots.service';
+import { AccountsSnapshotsService } from '../accounts-snapshots/accounts-snapshots.service';
 import { BudgetAccessService } from '../budgets/budget-access.service';
 import { BudgetWriteService } from '../budgets/budget-write.service';
 import { CreateGroupAccountDto } from './dto/group-finances.dto';
-export const money = roundGroupMoney;
 
 @Injectable()
 export class GroupWalletService {

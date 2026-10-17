@@ -27,7 +27,12 @@ describe('Group finances boundary contracts', () => {
     base = `/groups/${idOf(group)}`;
     accountId = idOf(
       await call('post', `${base}/accounts`)
-        .send({ amount: 0.3, openedAt: '2024-01-01T00:00:00Z' })
+        .send({
+          name: 'Family',
+          currency: 'USD',
+          amount: 0.3,
+          openedAt: '2024-01-01T00:00:00Z',
+        })
         .expect(201),
     );
     categoryId = idOf(
@@ -52,14 +57,20 @@ describe('Group finances boundary contracts', () => {
         .expect(201),
     );
     await call('post', `/groups/${group}/accounts`)
-      .send({ openedAt: invalid })
+      .send({ name: 'Family', currency: 'USD', openedAt: invalid })
       .expect(400);
     await expense(0.1, invalid).expect(400);
     await call('post', `${base}/incomes`)
       .send({ accountId, amount: 1, transactionDate: invalid })
       .expect(400);
     await call('post', `${base}/expense-limits`)
-      .send({ categoryId, total: 1, startDate: invalid, endDate: '2025-03-31' })
+      .send({
+        categoryId,
+        currency: 'USD',
+        total: 1,
+        startDate: invalid,
+        endDate: '2025-03-31',
+      })
       .expect(400);
     for (const path of [
       `reports/months?toDate=${invalid}`,
@@ -80,7 +91,12 @@ describe('Group finances boundary contracts', () => {
         .expect(201),
     );
     const wallet = await call('post', `/groups/${group}/accounts`)
-      .send({ amount: 123.45, openedAt: '2099-01-01T00:00:00Z' })
+      .send({
+        name: 'Family',
+        currency: 'USD',
+        amount: 123.45,
+        openedAt: '2099-01-01T00:00:00Z',
+      })
       .expect(201);
     expect((wallet.body as { amount: number }).amount).toBe(0);
     const read = await call(
@@ -93,7 +109,12 @@ describe('Group finances boundary contracts', () => {
       `/groups/${group}/reports/months?fromDate=2098-12-01&toDate=2099-01-31`,
     ).expect(200);
     expect(
-      (report.body as { balance: number }[]).map((row) => row.balance),
+      (
+        report.body as { currencies: { currency: string; balance: number }[] }[]
+      ).map((row) => {
+        expect(row.currencies[0].currency).toBe('USD');
+        return row.currencies[0].balance;
+      }),
     ).toEqual([0, 123.45]);
   });
 
@@ -106,7 +127,7 @@ describe('Group finances boundary contracts', () => {
     const expenseId = idOf(await expense(0.1, '2024-01-02').expect(201));
     const limitId = idOf(
       await call('post', `${base}/expense-limits`)
-        .send({ categoryId, total: 2 })
+        .send({ categoryId, currency: 'USD', total: 2 })
         .expect(201),
     );
     const paths = [
@@ -121,7 +142,7 @@ describe('Group finances boundary contracts', () => {
       await call('delete', `${base}/${path}?unexpected=value`).expect(400);
     }
     await call('post', `${base}/accounts?unexpected=value`)
-      .send({})
+      .send({ name: 'Family', currency: 'USD' })
       .expect(400);
     await call('post', `${base}/expense-categories?unexpected=value`)
       .send({ name: 'Unexpected' })
@@ -146,7 +167,7 @@ describe('Group finances boundary contracts', () => {
   it('rejects empty settings and transaction patches', async () => {
     const limitId = idOf(
       await call('post', `${base}/expense-limits`)
-        .send({ categoryId, total: 2 })
+        .send({ categoryId, currency: 'USD', total: 2 })
         .expect(201),
     );
     const expenseId = idOf(await expense(0.1, '2024-01-02').expect(201));
@@ -172,18 +193,23 @@ describe('Group finances boundary contracts', () => {
     ).expect(200);
     const rows = report.body as {
       period: string;
-      balance: number;
-      expenses: number;
+      currencies: { currency: string; balance: number; expenses: number }[];
     }[];
     expect(rows[0]).toMatchObject({
       period: '2024-01',
-      balance: 0,
-      expenses: 0.3,
+      currencies: [
+        expect.objectContaining({ currency: 'USD', balance: 0, expenses: 0.3 }),
+      ],
     });
     expect(rows.at(-1)).toMatchObject({
       period: '2025-01',
-      balance: -0.1,
-      expenses: 0.1,
+      currencies: [
+        expect.objectContaining({
+          currency: 'USD',
+          balance: -0.1,
+          expenses: 0.1,
+        }),
+      ],
     });
     await call('patch', `${base}/expenses/${idOf(earlier)}`)
       .send({ amount: 0.2 })

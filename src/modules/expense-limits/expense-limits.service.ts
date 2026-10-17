@@ -25,7 +25,7 @@ import { ExpenseLimit } from './schemas/expense-limit.schema';
 type LimitCreate = {
   categoryId: string;
   total: number;
-  currency?: string;
+  currency: string;
   startDate?: string;
   endDate?: string;
 };
@@ -78,6 +78,7 @@ export class ExpenseLimitsService {
     dto: LimitCreate,
     session: ClientSession,
   ) {
+    this.validatePrecision(dto.total, dto.currency);
     const category = await lockBudgetExpenseCategory(
       this.expenseCategoryModel,
       budget,
@@ -102,7 +103,7 @@ export class ExpenseLimitsService {
           startDate,
           endDate,
           total: dto.total,
-          ...(budget.ownerType === 'user' ? { currency: dto.currency } : {}),
+          currency: dto.currency,
         },
       ],
       { session },
@@ -124,9 +125,7 @@ export class ExpenseLimitsService {
       ...(query.categoryId
         ? { category: new Types.ObjectId(query.categoryId) }
         : {}),
-      ...(budget.ownerType === 'user' && query.currency
-        ? { currency: query.currency }
-        : {}),
+      ...(query.currency ? { currency: query.currency } : {}),
       ...(query.periodDate
         ? {
             startDate: { $lte: new Date(query.periodDate) },
@@ -168,11 +167,10 @@ export class ExpenseLimitsService {
     session?: ClientSession,
   ) {
     const old = await this.limit(budget, limitId, session);
+    if (dto.total !== undefined)
+      this.validatePrecision(dto.total, old.currency!);
     let data: LimitChanges = dto;
-    if (budget.ownerType === 'user') {
-      if (dto.total !== undefined)
-        this.validatePrecision(dto.total, old.currency!);
-    } else {
+    if (budget.ownerType === 'group') {
       if (!session) throw new Error('Group limit writes require a session');
       const category = await lockBudgetExpenseCategory(
         this.expenseCategoryModel,
@@ -187,7 +185,7 @@ export class ExpenseLimitsService {
         category._id,
         startDate,
         endDate,
-        undefined,
+        old.currency,
         limitId,
         session,
       );
@@ -226,7 +224,7 @@ export class ExpenseLimitsService {
       );
   }
 
-  /** Shared active expense usage; personal limits retain their currency bucket. */
+  /** Shared active expense usage within the limit's currency bucket. */
   async findExpenseUsage(
     budget: BudgetContext,
     categoryId: Types.ObjectId,
@@ -253,16 +251,14 @@ export class ExpenseLimitsService {
             deletedAt: null,
             category: categoryId,
             transactionDate: { $gte: startDate, $lte: endDate },
-            ...(budget.ownerType === 'user' ? { currency } : {}),
+            currency,
           },
         },
         { $group: { _id: null, total: { $sum: '$amount' } } },
       ])
       .session(session ?? null);
     const total = sums[0]?.total ?? 0;
-    return budget.ownerType === 'user'
-      ? normalizeMoney(total, currency!)
-      : total;
+    return normalizeMoney(total, currency!);
   }
 
   private async buildResponse(
@@ -285,10 +281,7 @@ export class ExpenseLimitsService {
       limit.currency,
       session,
     );
-    const rest =
-      budget.ownerType === 'user'
-        ? normalizeMoney(limit.total - usage, limit.currency!)
-        : Math.round((limit.total - usage + Number.EPSILON) * 100) / 100;
+    const rest = normalizeMoney(limit.total - usage, limit.currency!);
     return {
       ...(budget.ownerType === 'user' ? personalResponse(limit) : limit),
       rest,
@@ -357,7 +350,7 @@ export class ExpenseLimitsService {
         category,
         startDate: { $lte: endDate },
         endDate: { $gte: startDate },
-        ...(budget.ownerType === 'user' ? { currency } : {}),
+        currency,
         ...(id ? { _id: { $ne: new Types.ObjectId(id) } } : {}),
       })
       .session(session ?? null);

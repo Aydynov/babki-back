@@ -84,11 +84,7 @@ export class ExpensesService {
         date,
         session,
       ));
-    if (
-      budget.ownerType === 'user' &&
-      !hasValidMoneyPrecision(dto.amount, account.currency!)
-    )
-      throw new BadRequestException('Amount exceeds currency precision.');
+    this.transactionsService.validateMoneyForBudget(budget, account, dto);
     await this.transactionsService.lockAccountsForBudget(
       budget,
       [account._id.toString()],
@@ -124,9 +120,8 @@ export class ExpensesService {
           description: dto.description,
           merchant: dto.merchant,
           items: dto.items ?? [],
-          ...(budget.ownerType === 'user'
-            ? { currency: account.currency, origin }
-            : {}),
+          currency: account.currency,
+          ...(budget.ownerType === 'user' ? { origin } : {}),
         },
       ],
       { session },

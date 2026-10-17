@@ -24,7 +24,12 @@ describe('Group finances isolation and settings HTTP', () => {
     const base = `/groups/${groupId}`;
     const accountId = id(
       await api('post', `${base}/accounts`)
-        .send({ amount: 100, openedAt: '2024-01-01T00:00:00Z' })
+        .send({
+          name: 'Family',
+          currency: 'USD',
+          amount: 100,
+          openedAt: '2024-01-01T00:00:00Z',
+        })
         .expect(201),
     );
     const categoryId = id(
@@ -102,6 +107,7 @@ describe('Group finances isolation and settings HTTP', () => {
     const limitId = id(
       await api('post', `${a.base}/expense-limits`)
         .send({
+          currency: 'USD',
           categoryId: a.categoryId,
           total: 30,
           startDate: '2024-02-01',
@@ -193,7 +199,16 @@ describe('Group finances isolation and settings HTTP', () => {
     ).expect(200);
     expect(reports.body).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ expenses: 10, incomes: 5, balance: 95 }),
+        expect.objectContaining({
+          currencies: [
+            expect.objectContaining({
+              currency: 'USD',
+              expenses: 10,
+              incomes: 5,
+              balance: 95,
+            }),
+          ],
+        }),
       ]),
     );
     expect(
@@ -217,13 +232,17 @@ describe('Group finances isolation and settings HTTP', () => {
       api('patch', `${base}/members/${fixture.users[1].id}/permissions`)
         .send(body)
         .expect(200);
-    await api('post', `${base}/accounts`, 1).send({}).expect(403);
+    await api('post', `${base}/accounts`, 1)
+      .send({ name: 'Family', currency: 'USD' })
+      .expect(403);
     await api('post', `${base}/expense-categories`, 1)
       .send({ name: 'Delegated' })
       .expect(403);
     await permission({ manageAccounts: true });
     const accountId = id(
-      await api('post', `${base}/accounts`, 1).send({}).expect(201),
+      await api('post', `${base}/accounts`, 1)
+        .send({ name: 'Family', currency: 'USD' })
+        .expect(201),
     );
     await api('post', `${base}/expense-categories`, 1)
       .send({ name: 'Delegated' })
@@ -235,14 +254,16 @@ describe('Group finances isolation and settings HTTP', () => {
         .send({ name: 'Delegated' })
         .expect(201),
     );
-    await api('post', `${base}/accounts`, 1).send({}).expect(403);
+    await api('post', `${base}/accounts`, 1)
+      .send({ name: 'Family', currency: 'USD' })
+      .expect(403);
     await api('post', `${base}/expense-limits`, 1)
-      .send({ categoryId, total: 10 })
+      .send({ categoryId, currency: 'USD', total: 10 })
       .expect(403);
     await permission({ manageCategories: false, manageLimits: true });
     const limitId = id(
       await api('post', `${base}/expense-limits`, 1)
-        .send({ categoryId, total: 10 })
+        .send({ categoryId, currency: 'USD', total: 10 })
         .expect(201),
     );
     await api('patch', `${base}/expense-limits/${limitId}`, 1)
@@ -258,6 +279,7 @@ describe('Group finances isolation and settings HTTP', () => {
   it('protects used categories, overlapping periods and archived category assignments', async () => {
     const a = await setup('Limits');
     const limit = {
+      currency: 'USD',
       categoryId: a.categoryId,
       total: 100,
       startDate: '2024-02-01',

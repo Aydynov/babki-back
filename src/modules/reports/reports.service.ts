@@ -9,6 +9,11 @@ import {
 } from 'date-fns';
 import { format } from 'date-fns/format';
 import { Model, Types } from 'mongoose';
+import {
+  BudgetContext,
+  budgetFilter,
+} from '../../common/budget/budget-context';
+import { Account } from '../accounts/schemas/accounts.schema';
 import { normalizeMoney } from '../../common/money/money';
 import { personalBudget } from '../../common/utils/personal-budget.util';
 import { AccountsSnapshotsService } from '../accounts-snapshots/accounts-snapshots.service';
@@ -30,7 +35,7 @@ import {
   PeriodReport,
 } from './interfaces/period-report.interface';
 
-type Period = { period: string; endDate: Date };
+export type ReportPeriod = { period: string; endDate: Date };
 type AccountMeta = {
   _id: Types.ObjectId;
   type: 'balance' | 'saving';
@@ -51,6 +56,7 @@ export class ReportsService {
     private readonly categoriesService: ExpenseCategoriesService,
     @InjectModel(AccountSnapshot.name)
     private readonly snapshots: Model<AccountSnapshotsDocument>,
+    @InjectModel(Account.name) private readonly accounts: Model<Account>,
   ) {}
 
   async findMonthly(
@@ -80,7 +86,7 @@ export class ReportsService {
     const accounts = await this.findAccounts(userId);
     const first = await this.firstSnapshot(userId);
     if (!first) return [];
-    const periods: Period[] = [];
+    const periods: ReportPeriod[] = [];
     for (
       let year = new Date(first).getFullYear();
       year <= new Date().getFullYear();
@@ -96,7 +102,7 @@ export class ReportsService {
   private async build(
     userId: string,
     accounts: AccountMeta[],
-    periods: Period[],
+    periods: ReportPeriod[],
     grouping: 'month' | 'year',
     filterIds?: string[],
   ) {
@@ -110,77 +116,133 @@ export class ReportsService {
       ),
       to: periods.at(-1)!.endDate,
     };
-    const [financial, movements, snapshots] = await Promise.all([
-      this.aggregateFinancial(
-        userId,
-        grouping,
-        range,
-        filterIds && categoryIds,
+    const snapshots = await this.snapshots
+      .find({
+        accountId: { $in: accounts.map((account) => account._id) },
+        date: { $lte: range.to },
+      })
+      .sort({ date: 1, createdAt: 1 })
+      .lean()
+      .exec();
+    return this.buildForBudget(
+      personalBudget(userId),
+      accounts,
+      periods,
+      grouping,
+      categoryIds,
+      filterIds && categoryIds,
+      (account, endDate) =>
+        Promise.resolve(
+          snapshots
+            .filter(
+              (item) =>
+                item.accountId.toString() === account._id.toString() &&
+                !isAfter(item.date, endDate),
+            )
+            .at(-1)?.amount ?? 0,
+        ),
+    );
+  }
+
+  async reportForBudget(
+    budget: BudgetContext,
+    periods: ReportPeriod[],
+    grouping: 'month' | 'year',
+    categoryIds: string[],
+    filterCategories: boolean,
+  ): Promise<PeriodReport[]> {
+    const accounts = await this.accounts
+      .find(budgetFilter(budget))
+      .lean()
+      .exec();
+    return this.buildForBudget(
+      budget,
+      accounts.map((account) => ({ ...account, currency: account.currency! })),
+      periods,
+      grouping,
+      categoryIds,
+      filterCategories ? categoryIds : undefined,
+      (account, endDate) =>
+        this.snapshotsService.balanceForBudget(
+          accounts.find((item) => item._id.equals(account._id))!,
+          endDate,
+        ),
+    );
+  }
+
+  private async buildForBudget(
+    budget: BudgetContext,
+    accounts: AccountMeta[],
+    periods: ReportPeriod[],
+    grouping: 'month' | 'year',
+    categoryIds: string[],
+    filterIds: string[] | undefined,
+    balanceAt: (account: AccountMeta, endDate: Date) => Promise<number>,
+  ): Promise<PeriodReport[]> {
+    const range = {
+      from: new Date(
+        periods[0].period + (grouping === 'year' ? '-01-01' : '-01'),
       ),
-      this.aggregateTransfers(userId, grouping, range),
-      this.snapshots
-        .find({
-          accountId: { $in: accounts.map((account) => account._id) },
-          date: { $lte: range.to },
-        })
-        .sort({ date: 1, createdAt: 1 })
-        .lean()
-        .exec(),
+      to: periods.at(-1)!.endDate,
+    };
+    const [financial, movements] = await Promise.all([
+      this.aggregateFinancial(budget, grouping, range, filterIds),
+      budget.ownerType === 'user'
+        ? this.aggregateTransfers(budget, grouping, range)
+        : Promise.resolve([]),
     ]);
     const totals = this.toTotals(financial, movements);
-    return periods.map(({ period, endDate }) => {
-      const currencies = new Set(accounts.map((account) => account.currency));
-      for (const key of totals.keys())
-        if (key.startsWith(`${period}:`))
-          currencies.add(key.slice(period.length + 1));
-      return {
-        period,
-        currencies: [...currencies].sort().map((currency) => {
-          const total = totals.get(`${period}:${currency}`) ?? this.empty();
-          let balance = 0;
-          let saving = 0;
-          for (const account of accounts.filter(
-            (item) => item.currency === currency,
-          )) {
-            const latest = snapshots
-              .filter(
-                (item) =>
-                  item.accountId.toString() === account._id.toString() &&
-                  !isAfter(item.date, endDate),
-              )
-              .at(-1);
-            if (account.type === 'balance') balance += latest?.amount ?? 0;
-            else saving += latest?.amount ?? 0;
-          }
-          return {
-            currency,
-            incomes: normalizeMoney(total.incomes, currency),
-            expenses: normalizeMoney(total.expenses, currency),
-            transfersIn: normalizeMoney(total.transfersIn, currency),
-            transfersOut: normalizeMoney(total.transfersOut, currency),
-            balance: normalizeMoney(balance, currency),
-            saving: normalizeMoney(saving, currency),
-            expensesByCategory: categoryIds.map((categoryId) => ({
-              categoryId,
-              total: normalizeMoney(
-                total.expensesByCategory.get(categoryId) ?? 0,
+    return Promise.all(
+      periods.map(async ({ period, endDate }) => {
+        const currencies = new Set(accounts.map((account) => account.currency));
+        for (const key of totals.keys())
+          if (key.startsWith(`${period}:`))
+            currencies.add(key.slice(period.length + 1));
+        return {
+          period,
+          currencies: await Promise.all(
+            [...currencies].sort().map(async (currency) => {
+              const total = totals.get(`${period}:${currency}`) ?? this.empty();
+              let balance = 0;
+              let saving = 0;
+              for (const account of accounts.filter(
+                (item) => item.currency === currency,
+              )) {
+                const amount = await balanceAt(account, endDate);
+                if (account.type === 'balance') balance += amount;
+                else if (budget.ownerType === 'user') saving += amount;
+              }
+              return {
                 currency,
-              ),
-            })),
-          };
-        }),
-      };
-    });
+                incomes: normalizeMoney(total.incomes, currency),
+                expenses: normalizeMoney(total.expenses, currency),
+                transfersIn: normalizeMoney(total.transfersIn, currency),
+                transfersOut: normalizeMoney(total.transfersOut, currency),
+                balance: normalizeMoney(balance, currency),
+                saving: normalizeMoney(saving, currency),
+                expensesByCategory: categoryIds.map((categoryId) => ({
+                  categoryId,
+                  total: normalizeMoney(
+                    total.expensesByCategory.get(categoryId) ?? 0,
+                    currency,
+                  ),
+                })),
+              };
+            }),
+          ),
+        };
+      }),
+    );
   }
 
   private aggregateFinancial(
-    userId: string,
+    budget: BudgetContext,
     grouping: 'month' | 'year',
     range: { from: Date; to: Date },
     categoryIds?: string[],
   ) {
     const match: Record<string, unknown> = {
-      ...personalBudget(userId),
+      ...budgetFilter(budget),
       ...activeTransactionFilter,
       type: { $in: ['income', 'expense'] },
       transactionDate: { $gte: range.from, $lte: range.to },
@@ -228,7 +290,7 @@ export class ReportsService {
   }
 
   private aggregateTransfers(
-    userId: string,
+    budget: BudgetContext,
     grouping: 'month' | 'year',
     range: { from: Date; to: Date },
   ) {
@@ -240,7 +302,7 @@ export class ReportsService {
     }>([
       {
         $match: {
-          ...personalBudget(userId),
+          ...budgetFilter(budget),
           ...activeTransactionFilter,
           type: 'transfer',
           transactionDate: { $gte: range.from, $lte: range.to },
@@ -341,7 +403,7 @@ export class ReportsService {
     const accounts = await this.accountsService.findByParams(userId, {});
     if (!accounts.length)
       throw new NotFoundException(`Accounts for user ${userId} not found.`);
-    return accounts.map((account) => ({
+    return accounts.map((account: Account & { _id: Types.ObjectId }) => ({
       _id: account._id,
       type: account.type,
       currency: account.currency!,
@@ -356,7 +418,7 @@ export class ReportsService {
     );
   }
   private monthPeriods(start: Date, end: Date) {
-    const result: Period[] = [];
+    const result: ReportPeriod[] = [];
     for (
       let cursor = startOfMonth(start);
       cursor <= startOfMonth(end);

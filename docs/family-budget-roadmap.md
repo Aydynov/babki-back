@@ -8,11 +8,13 @@
 
 ## Текущая точка
 
-- Завершены этапы **01 — финансовые права** и **02 — общие механизмы финансов**, оба полных цикла закрыты.
+- Завершены этапы **01 — финансовые права**, **02 — общие механизмы финансов** и **03 — валюты и отчёты**, все три цикла закрыты.
 - Архив: [add-group-financial-management-permission](../openspec/changes/archive/2026-10-17-add-group-financial-management-permission/proposal.md).
-- Архив этапа 02: [unify-budget-financial-core](../openspec/changes/archive/2026-10-17-unify-budget-financial-core/proposal.md). Активных change нет. Следующее действие — этап **03: валюты и контракт отчётов**, начиная с согласования указанных продуктовых решений.
-- Этапы 03–10: запланированы, их OpenSpec-артефакты ещё не созданы.
-- Этапы 01–02 реализованы и проверены локальными unit/e2e; миграций нет, развёрнутый API не проверялся.
+- Архив этапа 02: [unify-budget-financial-core](../openspec/changes/archive/2026-10-17-unify-budget-financial-core/proposal.md). Архив этапа 03: [add-group-currencies-and-report-contract](../openspec/changes/archive/2026-10-17-add-group-currencies-and-report-contract/proposal.md). Активных change нет; следующее действие — планирование этапа **04: несколько счетов и накопления**.
+- Этапы 04–10 запланированы, их OpenSpec-артефакты ещё не созданы.
+- Этапы 01–03 реализованы и проверены локальными unit/e2e; миграций нет, развёрнутый API не проверялся.
+
+Этапы 01–02 зафиксированы коммитом `d1176da` — `Unified budget finances and added transaction permissions`.
 
 ## Сквозное архитектурное требование
 
@@ -122,20 +124,45 @@
 
 ## 03. Валюты и согласованный денежный контракт
 
-- [ ] Создан change.
-- [ ] Применён; миграция проверена.
-- [ ] Тестирование и build успешны; результаты записаны.
-- [ ] Архивирован; main specs синхронизированы.
+- [x] Создан change.
+- [x] Применён; dev fixtures обновлены (миграция не требуется).
+- [x] Тестирование и build успешны; результаты записаны.
+- [x] Архивирован; main specs синхронизированы.
 
-Объём: явные name/currency единственного пока группового счёта; валюта операций, лимитов и денежных сумм; общие money utilities вместо фиксированной точности 2; групповые отчёты `{ period, currencies: [...] }` с теми же смыслами полей, что у личных. Согласовать валютные лимиты и запрет арифметической суммы разных валют без конвертации. Сохранить UTC, initialAmount, openedAt, историческую атрибуцию и общий баланс независимо от фильтра расходов.
+Объём: явные name/currency единственного пока группового счёта; валюта операций, лимитов и денежных сумм; общие money utilities вместо фиксированной точности 2; групповые отчёты `{ period, currencies: [...] }` с теми же смыслами полей, что у личных. Лимиты разделяются по валютам; арифметическая сумма разных валют без конвертации запрещена. Сохранить UTC, initialAmount, openedAt, историческую атрибуцию и общий баланс независимо от фильтра расходов.
 
-До создания change согласовать: одна валюта группы или валюта каждого счёта (рекомендация — неизменяемая валюта счёта, с возможностью разных валют позже); валюта лимита и политика пересечений; точная судьба старого плоского ответа отчётов; назначение валюты старым данным.
+Согласовано пользователем 2026-10-17: неизменяемая валюта каждого счёта, операции наследуют её; лимит на категорию и валюту, пересечения запрещены только в той же валюте. Отчёты сразу заменяются новым контрактом без legacy-варианта. Существуют только dev-данные, миграция не нужна.
 
-Миграция: только по подтверждённому отображению существующих счетов/групп в валюты, без вывода из личных настроек автора. Предусмотреть dry-run, обнаружение пропусков, повторный безопасный запуск, порядок развёртывания и откат. Неразрешённые данные нельзя молча объявить RUB/USD или суммировать.
+Dev-данные: обновить seeds/fixtures и описать их пересоздание; не добавлять миграцию и не угадывать валюту старых сумм из профиля. Развёртывание требует чистых/пересозданных dev-данных. При появлении реальных данных потребуется отдельное согласованное отображение валют и migration change.
 
 Приёмка: два участника с разными defaultCurrency видят одинаковую валюту семейных денег; точность проверяется по валюте; отчёты совместимы по денежной структуре. savings/transfers на этом этапе честно отсутствуют/нулевые согласно согласованному контракту, поскольку их функций ещё нет.
 
-Журнал: не начат.
+Журнал планирования (2026-10-17): подготовлены [proposal](../openspec/changes/archive/2026-10-17-add-group-currencies-and-report-contract/proposal.md), [design](../openspec/changes/archive/2026-10-17-add-group-currencies-and-report-contract/design.md), три delta specs и [tasks](../openspec/changes/archive/2026-10-17-add-group-currencies-and-report-contract/tasks.md). `openspec validate add-group-currencies-and-report-contract --strict --no-interactive` — valid, exit code 0; status — 4/4 planning artifacts complete. Применение, unit/e2e/build и архивирование не выполнялись; следующий шаг — apply этапа 03. Код проекта не менялся.
+
+Журнал применения (2026-10-17):
+
+- Счёт группы требует name/currency; валюта неизменяема, операции наследуют её сервером. Общий TransactionsService проверяет amount при create/PATCH и денежные price групповых items; количество позиций сохраняет прежние правила. Общие money utilities обслуживают JPY/RUB/KWD, ledger/snapshots, revenue и rest лимитов. Личные wire-контракты и минимальные границы личных amount/item.price сохранены.
+- ExpenseLimitsService применяет overlap и usage к owner/category/currency. Валюта лимита неизменяема, допустима без счёта нужной валюты. Возвращается прежнее поле rest, aliases used/remaining не добавлялись. Блокировки категории, финансовые транзакции и permissions сохранены.
+- ReportsService теперь общий построитель валютных DTO/агрегаций. GroupReportsService оставлен адаптером доступа, UTC-периодов и категорий. Личные календарь/defaults/snapshot carry сохранены; групповой остаток берётся из ledger. Один balance-счёт остаётся ограничением, saving/transfers в отчёте равны 0, старый плоский ответ удалён.
+- TDD: новый набор операций сначала 6 failed (отсутствующая monetary identity, фиксированная precision, отсутствующая currency); после промежуточного добавления счёта подтверждены failures операций JPY/KWD и currency ответа. Лимиты сначала 5 failed (currency-less 201 вместо 400 / currency-запрос 400 вместо 201); отчёты — failure старого плоского DTO вместо currencies. После реализации новые проверки проходят.
+- Полный unit-прогон сначала выявил 7 failures в mocks расходов/доходов и group account fixture unit-теста transactions. Моки подключены к реальному общему валидатору, fixture получил USD. Повтор `npm run test -- --runInBand` — exit code 0, 53 suites / 300 tests passed, 4.059 s. `npm run build` — exit code 0.
+- Первый полный e2e: 23 passed / 1 failed suite, 152 passed / 1 failed test. Причина — ещё одна устаревшая fixture budget-settings-compatibility без name/currency и лимит без currency; updated assertions сохраняют старые UTC/изоляционные проверки, теперь ожидают USD. Узкий повтор `npm run test:e2e -- --runInBand budget-settings-compatibility` — exit code 0, 2 tests passed. Итоговый повтор `npm run test:e2e -- --runInBand` — exit code 0, 24 suites / 153 tests passed, 102.162 s. Среда — временные локальные MongoDB replica sets и loopback HTTP с разрешением вне ограничений сокетов песочницы; рабочая база не использовалась.
+- Независимые ревью core/limits и reports: critical/important замечаний нет. Документация: group-finances-api.md (breaking DTO/report, precision, optional/empty/null cases и dev reset), budget-financial-core.md и group-finances-seed.md. Seeds и HTTP fixtures задают валюту явно; миграция не нужна по подтверждённому решению пользователя. Seed рабочей базы не запускался; deploy/live API не проверялся.
+- Prettier — все 33 затронутых/новых TS-файла проходят. ESLint новых/затронутых файлов, кроме user-deletion.e2e-spec.ts — exit code 0; в user-deletion ранее существовали 5 unsafe-any ошибок вне изменённого участка (изменён только объект создания group account). Они не подавлены и не считаются прошедшей проверкой. `git diff --check` и strict change validation — exit code 0.
+
+Покрытие delta-сценариев:
+
+| Контракт | Проверки |
+| --- | --- |
+| Обязательные name/currency, immutable currency, precision 0/2/3, разные defaultCurrency, singleton | group-currency-transactions; group-finances/concurrency/isolation |
+| Операции amount/price create/PATCH, точная компенсация, read-only currency, фильтры/revenue 0/одна сумма/null | group-currency-transactions; group-financial-management |
+| Валютные лимиты, precision/immutable/filter, usage owner/category/currency, UTC границы, update/concurrent overlap | group-currency-limits; budget-settings-compatibility; group-finances-concurrency |
+| Валютный report DTO, empty, initialAmount/openedAt, UTC история, category filter, archive/departed/deleted, isolation/sorting | group-currency-reports; group-finances-boundaries/isolation; group-finances |
+| Личные DTO, валюты и snapshots, permissions/lifecycle/auth | budget-core-compatibility; personal-report-history; multicurrency; прежние unit/e2e-наборы |
+
+Все 18/18 задач применения завершены. Синхронизированы group-wallet (1 modified + 1 added), group-transactions (3 modified + 2 added), group-budget-settings (2 modified + 3 added); Purpose и прежние сценарии сохранены. `openspec validate --specs --no-interactive` — exit code 0, 15 passed / 0 failed; остаются предупреждения длины требований >500 символов, в том числе расширенного Group limits. Тексты не сокращались ради strict-проверки.
+
+Архив: `openspec/changes/archive/2026-10-17-add-group-currencies-and-report-contract/`, 2026-10-17 (Europe/Moscow), `.openspec.yaml` сохранён. Main specs сопоставлены с delta, все изменения синхронизированы. `openspec list --json` после перемещения — changes=[], exit code 0; `git diff --check` — exit code 0. Следующее действие — планирование этапа 04, его change ещё не создан. Коммит/публикация этапа 03 не выполнялись.
 
 ## 04. Несколько счетов и накопления
 
@@ -144,7 +171,7 @@
 - [ ] Тестирование и build успешны; результаты записаны.
 - [ ] Архивирован; main specs синхронизированы.
 
-Объём: использовать общие Account, balance/saving discriminators и жизненный цикл; снять одиночность группового balance; именованные счета, список/детали, rename, archive и безопасное удаление неиспользованного. История архивных счетов доступна, новые движения запрещены. Сразу расширить отчёты на все счета и реальный saving, включая архивные, чтобы не оставлять findOne вместо общего остатка. Явно обновить существующую group-wallet spec, запрещающую saving и второй счёт.
+Объём: использовать общие Account, balance/saving discriminators и жизненный цикл; снять одиночность группового balance; именованные счета, список/детали, rename, archive и безопасное удаление неиспользованного. История архивных счетов доступна, новые движения запрещены. Расширить общий построитель отчётов этапа 03 на реальный saving и архивные счета, проверив общий остаток по всем счетам. Явно обновить существующую group-wallet spec, запрещающую saving и второй счёт.
 
 До создания change согласовать: прямые доходы/расходы на saving либо только переводы; исправления исторических операций архивного счёта; необходимость group defaultAccountId (без необходимости не добавлять); отрицательные остатки saving. Пока этап 05 не применён, UI не должен обещать пополнение резерва переводом.
 

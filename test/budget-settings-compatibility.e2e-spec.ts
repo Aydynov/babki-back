@@ -116,7 +116,12 @@ describe('Budget settings compatibility', () => {
       .send({ name: 'Settings group' })
       .expect(409);
     const account = await api('post', `${base}/accounts`)
-      .send({ amount: 100, openedAt: '2026-09-01T00:00:00.000Z' })
+      .send({
+        name: 'Family',
+        currency: 'USD',
+        amount: 100,
+        openedAt: '2026-09-01T00:00:00.000Z',
+      })
       .expect(201);
     for (const amount of [0.1, 0.2])
       await api('post', `${base}/expenses`)
@@ -130,6 +135,7 @@ describe('Budget settings compatibility', () => {
     const limit = await api('post', `${base}/expense-limits`)
       .send({
         categoryId,
+        currency: 'USD',
         total: 1,
         startDate: '2026-09-01T12:00:00.000Z',
         endDate: '2026-09-30T12:00:00.000Z',
@@ -141,7 +147,7 @@ describe('Budget settings compatibility', () => {
       startDate: '2026-09-01T00:00:00.000Z',
       endDate: '2026-09-30T23:59:59.999Z',
     });
-    expect(limit.body).not.toHaveProperty('currency');
+    expect(limit.body).toHaveProperty('currency', 'USD');
     await api('get', `/expense-categories/${categoryId}`).expect(404);
     await api('get', `/expense-limits/${id(limit)}`).expect(404);
     await api('patch', `${base}/expense-categories/${categoryId}`)
@@ -160,6 +166,7 @@ describe('Budget settings compatibility', () => {
     await api('post', `${base}/expense-limits`)
       .send({
         categoryId,
+        currency: 'USD',
         total: 1,
         startDate: '2026-10-01',
         endDate: '2026-10-31',

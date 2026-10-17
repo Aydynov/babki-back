@@ -29,14 +29,21 @@ describe('Group finances HTTP', () => {
       (g.body as { _id: string; id: string }).id ??
       (g.body as { _id: string })._id;
     const a = await call('post', `/groups/${group}/accounts`)
-      .send({ amount: 1000, openedAt: '2024-01-01T00:00:00.000Z' })
+      .send({
+        name: 'Family',
+        currency: 'USD',
+        amount: 1000,
+        openedAt: '2024-01-01T00:00:00.000Z',
+      })
       .expect(201);
     account = (a.body as { _id: string })._id;
     const c = await call('post', `/groups/${group}/expense-categories`)
       .send({ name: 'Food' })
       .expect(201);
     category = (c.body as { _id: string })._id;
-    await call('post', `/groups/${group}/accounts`).send({}).expect(409);
+    await call('post', `/groups/${group}/accounts`)
+      .send({ name: 'Family', currency: 'USD' })
+      .expect(409);
   });
   it('attributes expenses to another member while recording the author', async () => {
     const invite = await call('post', `/groups/${group}/invitations`)
@@ -123,7 +130,15 @@ describe('Group finances HTTP', () => {
     ).expect(200);
     expect(report.body).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ expenses: 150, balance: 850 }),
+        expect.objectContaining({
+          currencies: [
+            expect.objectContaining({
+              currency: 'USD',
+              expenses: 150,
+              balance: 850,
+            }),
+          ],
+        }),
       ]),
     );
     await call('delete', `/groups/${group}/expenses/${expense}`).expect(204);
@@ -136,7 +151,13 @@ describe('Group finances HTTP', () => {
       `/groups/${group}/reports/months?fromDate=2024-02-01&toDate=2024-02-29`,
     ).expect(200);
     expect(reportAfter.body).toEqual(
-      expect.arrayContaining([expect.objectContaining({ expenses: 0 })]),
+      expect.arrayContaining([
+        expect.objectContaining({
+          currencies: [
+            expect.objectContaining({ currency: 'USD', expenses: 0 }),
+          ],
+        }),
+      ]),
     );
     const a = await call('get', `/groups/${group}/accounts/${account}`).expect(
       200,

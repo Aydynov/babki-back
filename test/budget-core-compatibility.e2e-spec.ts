@@ -36,7 +36,11 @@ describe('Budget core behavior before and after unification', () => {
                   type: 'balance',
                   openedAt: '2024-01-01T00:00:00Z',
                 }
-              : { openedAt: '2024-01-01T00:00:00Z' },
+              : {
+                  name: 'Family',
+                  currency: 'USD',
+                  openedAt: '2024-01-01T00:00:00Z',
+                },
           )
           .expect(201),
       );
@@ -78,7 +82,7 @@ describe('Budget core behavior before and after unification', () => {
           participantId: ctx.users[0].id,
           category: categoryId,
         });
-        expect(row.currency).toBeUndefined();
+        expect(row.currency).toBe('USD');
       }
       const page = await api(
         'get',

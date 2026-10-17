@@ -10,7 +10,7 @@ import {
 import { InjectModel } from '@nestjs/mongoose';
 import { ClientSession, Model, Types } from 'mongoose';
 import { getPagination } from 'src/common/utils/pagination.util';
-import { normalizeMoney } from 'src/common/money/money';
+import { hasValidMoneyPrecision, normalizeMoney } from 'src/common/money/money';
 import { BudgetContext, budgetFilter } from 'src/common/budget/budget-context';
 import { BudgetWriteService } from '../../budgets/budget-write.service';
 import {
@@ -177,20 +177,11 @@ export class TransactionsService {
       { $match: filter },
       {
         $group: {
-          _id: budget.ownerType === 'user' ? '$currency' : null,
+          _id: '$currency',
           totalRevenue: { $sum: '$amount' },
         },
       },
     ]);
-    if (budget.ownerType === 'group')
-      return {
-        fromDate: query.fromDate,
-        toDate: query.toDate,
-        totalRevenue:
-          Math.round(
-            ((aggregate[0]?.totalRevenue ?? 0) + Number.EPSILON) * 100,
-          ) / 100,
-      };
     const currencies = aggregate
       .filter((row) => typeof row._id === 'string')
       .map((row) => ({
@@ -225,6 +216,29 @@ export class TransactionsService {
     });
   }
 
+  validateMoneyForBudget(
+    budget: BudgetContext,
+    account: Account,
+    values: Pick<FinancialChanges, 'amount' | 'items'>,
+  ) {
+    if (!account.currency)
+      throw new BadRequestException('Account currency is missing.');
+    if (
+      values.amount !== undefined &&
+      !hasValidMoneyPrecision(values.amount, account.currency)
+    )
+      throw new BadRequestException('Amount exceeds currency precision.');
+    if (
+      budget.ownerType === 'group' &&
+      values.items?.some(
+        (item) =>
+          item.price <= 0 ||
+          !hasValidMoneyPrecision(item.price, account.currency!),
+      )
+    )
+      throw new BadRequestException('Item price exceeds currency precision.');
+  }
+
   async updateForBudget(
     budget: BudgetContext,
     row: FinancialTransaction,
@@ -237,6 +251,7 @@ export class TransactionsService {
     const resolved =
       account ??
       (await this.accountForBudget(budget, row.accountId.toString(), session));
+    this.validateMoneyForBudget(budget, resolved, changes);
     await this.lockAccountsForBudget(
       budget,
       [row.accountId.toString()],

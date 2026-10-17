@@ -6,6 +6,7 @@ import { AccountSnapshot } from '../accounts-snapshots/schemas/accounts-snapshot
 import { AccountsService } from '../accounts/accounts/accounts.service';
 import { ExpenseCategoriesService } from '../expense-categories/expense-categories.service';
 import { Transaction } from '../transactions/schemas/transaction.schema';
+import { Account } from '../accounts/schemas/accounts.schema';
 import { ReportsService } from './reports.service';
 
 describe('ReportsService multicurrency buckets', () => {
@@ -30,6 +31,7 @@ describe('ReportsService multicurrency buckets', () => {
     const moduleRef = await Test.createTestingModule({
       providers: [
         ReportsService,
+        { provide: getModelToken(Account.name), useValue: {} },
         { provide: getModelToken(Transaction.name), useValue: transactions },
         { provide: AccountsService, useValue: accounts },
         { provide: AccountsSnapshotsService, useValue: snapshotsService },
