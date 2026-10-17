@@ -8,11 +8,11 @@
 
 ## Текущая точка
 
-- Завершены этапы **01 — финансовые права**, **02 — общие механизмы финансов** **03 — валюты и отчёты** и **04 — несколько счетов и накопления**, и **05 — переводы внутри группы**, все пять циклов закрыты.
+- Завершены этапы **01 — финансовые права**, **02 — общие механизмы финансов** **03 — валюты и отчёты** и **04 — несколько счетов и накопления**, и **05 — переводы внутри группы**, и **06 — предпросмотр приглашения**, все шесть циклов закрыты.
 - Архив: [add-group-financial-management-permission](../openspec/changes/archive/2026-10-17-add-group-financial-management-permission/proposal.md).
-- Архив этапа 02: [unify-budget-financial-core](../openspec/changes/archive/2026-10-17-unify-budget-financial-core/proposal.md). Архив этапа 03: [add-group-currencies-and-report-contract](../openspec/changes/archive/2026-10-17-add-group-currencies-and-report-contract/proposal.md). Архив этапа 04: [add-group-accounts-and-savings](../openspec/changes/archive/2026-10-17-add-group-accounts-and-savings/proposal.md). Архив этапа 05: [add-group-account-transfers](../openspec/changes/archive/2026-10-17-add-group-account-transfers/proposal.md). Активен change этапа **06: предпросмотр приглашения** — [add-group-invitation-preview](../openspec/changes/add-group-invitation-preview/proposal.md). Следующее действие — применение после отдельной команды пользователя.
-- Этап 05 реализован, проверен, зафиксирован коммитом до архивирования; цикл закрыт. Этап 06 реализован и проверен; предстоят коммит реализации, архив и коммит архива. Этапы 07–10 запланированы, их OpenSpec-артефакты ещё не созданы.
-- Этапы 01–05 реализованы и проверены локальными unit/e2e; миграций нет, развёрнутый API не проверялся.
+- Архив этапа 02: [unify-budget-financial-core](../openspec/changes/archive/2026-10-17-unify-budget-financial-core/proposal.md). Архив этапа 03: [add-group-currencies-and-report-contract](../openspec/changes/archive/2026-10-17-add-group-currencies-and-report-contract/proposal.md). Архив этапа 04: [add-group-accounts-and-savings](../openspec/changes/archive/2026-10-17-add-group-accounts-and-savings/proposal.md). Архив этапа 05: [add-group-account-transfers](../openspec/changes/archive/2026-10-17-add-group-account-transfers/proposal.md). Архив этапа 06: [add-group-invitation-preview](../openspec/changes/archive/2026-10-17-add-group-invitation-preview/proposal.md). Активных change нет. Следующее действие — отдельное планирование этапа 07, исторические авторы и участники.
+- Этап 05 реализован, проверен, зафиксирован коммитом до архивирования; цикл закрыт. Этап 06 реализован, проверен, закоммичен до архивирования; архив закрепляется отдельным коммитом. Этапы 07–10 запланированы, их OpenSpec-артефакты ещё не созданы.
+- Этапы 01–06 реализованы и проверены локальными unit/e2e; миграций нет, развёрнутый API не проверялся.
 
 Этапы 01–02 зафиксированы коммитом `d1176da` — `Unified budget finances and added transaction permissions`.
 
@@ -237,7 +237,7 @@ Dev-данные: обновить seeds/fixtures и описать их пер�
 - [x] Создан change.
 - [x] Применён.
 - [x] Тестирование и build успешны; результаты записаны.
-- [ ] Архивирован; main specs синхронизированы.
+- [x] Архивирован; main specs синхронизированы.
 
 Объём: предложенный POST `/group-invitations/preview`, токен только в теле. Переиспользовать существующие проверку секрета/состояния/срока и распределённое ограничение попыток. Возвращать только название, тип, expiresAt; не создавать членство и не потреблять ссылку. Общая ошибка для невалидного, истёкшего, использованного/отозванного токена и удалённой группы. Токен не попадает в логи/ошибки.
 
@@ -245,7 +245,7 @@ Dev-данные: обновить seeds/fixtures и описать их пер�
 
 Приёмка: два preview не меняют состояние ссылки, accept после них работает; revoke/expire/delete между preview и accept обрабатываются корректно; раскрытия участников/финансов нет.
 
-Журнал подготовки (2026-10-17): архив этапа 05 закоммичен как `fd76838`. Изучены GroupInvitationsController/Service, digest/pending/expiry, GroupsTransactionService, shared MongoDB rate guard, DTO, request logging/error filter, действующие groups HTTP/concurrency и main group-invitations spec. Созданы [proposal](../openspec/changes/add-group-invitation-preview/proposal.md), [design](../openspec/changes/add-group-invitation-preview/design.md), [delta spec](../openspec/changes/add-group-invitation-preview/specs/group-invitations/spec.md) и [tasks](../openspec/changes/add-group-invitation-preview/tasks.md), 10 задач. План переиспользует существующие модели, token DTO, resolver, транзакционный wrapper и счётчик; доменных writes от preview нет. Учтено исключение query из application logs/error.path приглашений, включая 401 до controller. Public preview и имя приглашающего исключены. Self-review: нет открытых вопросов/placeholder, контракт согласован с задачами и source; прежние acceptance scenarios сохраняются.
+Журнал подготовки (2026-10-17): архив этапа 05 закоммичен как `fd76838`. Изучены GroupInvitationsController/Service, digest/pending/expiry, GroupsTransactionService, shared MongoDB rate guard, DTO, request logging/error filter, действующие groups HTTP/concurrency и main group-invitations spec. Созданы [proposal](../openspec/changes/archive/2026-10-17-add-group-invitation-preview/proposal.md), [design](../openspec/changes/archive/2026-10-17-add-group-invitation-preview/design.md), [delta spec](../openspec/changes/archive/2026-10-17-add-group-invitation-preview/specs/group-invitations/spec.md) и [tasks](../openspec/changes/archive/2026-10-17-add-group-invitation-preview/tasks.md), 10 задач. План переиспользует существующие модели, token DTO, resolver, транзакционный wrapper и счётчик; доменных writes от preview нет. Учтено исключение query из application logs/error.path приглашений, включая 401 до controller. Public preview и имя приглашающего исключены. Self-review: нет открытых вопросов/placeholder, контракт согласован с задачами и source; прежние acceptance scenarios сохраняются.
 
 `openspec validate add-group-invitation-preview --strict --no-interactive` — valid, exit code 0; status — 4/4 planning artifacts complete. `git diff --check` — exit code 0. Реализация, unit/e2e/build и архивирование этапа 06 не выполнялись; production-код и main specs после коммита архива этапа 05 не менялись. Следующее действие — apply по отдельной команде; этап 07 ещё не создан.
 
@@ -258,6 +258,8 @@ Dev-данные: обновить seeds/fixtures и описать их пер�
 Порядок по последней команде пользователя: реализация/проверки/ревью → первый коммит → sync и архив → второй коммит. На этой записи полная финальная проверка ещё выполняется, коммиты этапа 06 и архив не созданы; этап 07 не создан.
 
 Итоговая проверка после исправления ревью: `npm run test -- --runInBand` — exit code 0, 55 suites / 333 tests passed (4.216 s); `npm run test:e2e -- --runInBand` — exit code 0, 33 suites / 274 tests passed (145.961 s); `npm run build` — exit code 0. Предыдущий полный e2e до финальной регрессии — 273 passed; окончательный запуск повторён после изменения общего filter. Scoped `npx prettier --check` и `npx eslint --no-warn-ignored` для 10 изменённых TS-файлов — exit code 0; `git diff --check` — exit code 0. `openspec validate add-group-invitation-preview --strict --no-interactive` — valid, exit code 0. Все delta-сценарии сопоставлены с двумя preview e2e-наборами, прежними groups/concurrency, guard и filter/log/path unit. 10/10 задач завершены. Все проверки локальные; сокеты разрешены для полного unit/e2e. Код готов к первому коммиту; change пока активен.
+
+Завершение (2026-10-17): первый коммит `b8489e5` — `Added group invitation preview`, без co-authored, создан **до** sync/архива. После него group-invitations синхронизирована: одно MODIFIED и три ADDED требования, прежние Purpose и сценарии сохранены; все delta-блоки сверены с main. `openspec validate --specs --no-interactive` — exit code 0, 15 passed / 0 failed, прежние предупреждения длинных требований остаются; строгая валидация change — valid. Change перемещён в `openspec/changes/archive/2026-10-17-add-group-invitation-preview/`. `openspec list --json` после переноса — changes=[], exit code 0; `git diff --check` — exit code 0. Sync, архив и журнал включаются во второй коммит `Archived group invitation preview change`, без co-authored. Публикация не выполнялась. Этап 07 не создан; следующий шаг — его отдельное планирование.
 
 ## 07. Исторические авторы и участники
 
