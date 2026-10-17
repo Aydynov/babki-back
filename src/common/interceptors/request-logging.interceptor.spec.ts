@@ -1,8 +1,47 @@
 import { Logger } from '@nestjs/common';
-import { of } from 'rxjs';
+import { lastValueFrom, of } from 'rxjs';
 import { RequestLoggingInterceptor } from './request-logging.interceptor';
 
 describe('RequestLoggingInterceptor', () => {
+  afterEach(() => jest.restoreAllMocks());
+
+  it.each(['preview', 'accept'])(
+    'omits invitation %s query secrets from successful request logs',
+    async (action) => {
+      const log = jest.spyOn(Logger.prototype, 'log').mockImplementation();
+      const request = {
+        method: 'POST',
+        url: `/custom/v2/GROUP-INVITATIONS/${action}/?token=query-secret&digest=query-digest`,
+        body: { token: 'body-secret', digest: 'body-digest' },
+      };
+      const context = {
+        switchToHttp: () => ({ getRequest: () => request }),
+      };
+
+      await lastValueFrom(
+        new RequestLoggingInterceptor().intercept(context as never, {
+          handle: () => of({}),
+        }),
+      );
+
+      expect(log).toHaveBeenCalledWith(
+        expect.stringMatching(
+          new RegExp(`^POST /custom/v2/GROUP-INVITATIONS/${action}/ \\d+ms$`),
+        ),
+      );
+      const serialized = JSON.stringify(log.mock.calls);
+      for (const secret of [
+        'query-secret',
+        'query-digest',
+        'body-secret',
+        'body-digest',
+      ]) {
+        expect(serialized).not.toContain(secret);
+      }
+      expect(request.url).toContain('?token=query-secret');
+    },
+  );
+
   it('logs request metadata without serializing authentication bodies', (done) => {
     const log = jest.spyOn(Logger.prototype, 'log').mockImplementation();
     const request = {

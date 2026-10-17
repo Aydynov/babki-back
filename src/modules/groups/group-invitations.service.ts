@@ -7,12 +7,13 @@ import {
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { createHash, randomBytes } from 'node:crypto';
-import { Model } from 'mongoose';
+import { ClientSession, Model } from 'mongoose';
 import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 import { getPagination } from '../../common/utils/pagination.util';
 import { GroupsAccessService } from './groups-access.service';
 import { GroupsTransactionService } from './groups-transaction.service';
 import { GroupInvitation } from './schemas/group-invitation.schema';
+import { Group } from './schemas/group.schema';
 import { GroupMembership } from './schemas/group-membership.schema';
 import { GroupMembershipEvent } from './schemas/group-membership-event.schema';
 
@@ -25,6 +26,7 @@ export class GroupInvitationsService {
     private readonly memberships: Model<GroupMembership>,
     @InjectModel(GroupMembershipEvent.name)
     private readonly events: Model<GroupMembershipEvent>,
+    @InjectModel(Group.name) private readonly groups: Model<Group>,
     private readonly access: GroupsAccessService,
     private readonly transactions: GroupsTransactionService,
   ) {}
@@ -101,11 +103,25 @@ export class GroupInvitationsService {
       );
     });
   }
+  async preview(token: string) {
+    return this.transactions.run(async (session) => {
+      const invitation = await this.pendingInvitation(token, session);
+      const group = await this.groups
+        .findOne({ _id: invitation.groupId, deletedAt: null })
+        .select('name type')
+        .session(session)
+        .lean();
+      if (!group) throw this.invalid();
+      return {
+        name: group.name,
+        type: group.type,
+        expiresAt: invitation.expiresAt,
+      };
+    });
+  }
   async accept(userId: string, token: string) {
     return this.transactions.run(async (session) => {
-      const filter = { tokenDigest: this.digest(token) };
-      const found = await this.invitations.findOne(filter).session(session);
-      if (!found) throw this.invalid();
+      const found = await this.pendingInvitation(token, session);
       const groupId = String(found.groupId);
       try {
         await this.access.serializeMutation(groupId, session);
@@ -113,16 +129,8 @@ export class GroupInvitationsService {
         if (error instanceof NotFoundException) throw this.invalid();
         throw error;
       }
-      const invitation = await this.invitations
-        .findOne(filter)
-        .session(session);
+      const invitation = await this.pendingInvitation(token, session);
       const now = new Date();
-      if (
-        !invitation ||
-        invitation.status !== 'pending' ||
-        invitation.expiresAt <= now
-      )
-        throw this.invalid();
       if (
         await this.memberships
           .exists({ groupId, userId, status: 'active' })
@@ -153,6 +161,17 @@ export class GroupInvitationsService {
       );
       return { groupId, role: 'member' as const };
     });
+  }
+  private async pendingInvitation(token: string, session: ClientSession) {
+    const invitation = await this.invitations
+      .findOne({
+        tokenDigest: this.digest(token),
+        status: 'pending',
+        expiresAt: { $gt: new Date() },
+      })
+      .session(session);
+    if (!invitation) throw this.invalid();
+    return invitation;
   }
   private digest(token: string) {
     return createHash('sha256').update(token).digest('hex');

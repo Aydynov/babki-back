@@ -6,6 +6,10 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import { Request, Response } from 'express';
+import {
+  invitationRequestPath,
+  isInvitationRequest,
+} from '../utils/invitation-request-path';
 
 @Catch()
 export class HttpExceptionFilter implements ExceptionFilter {
@@ -33,11 +37,17 @@ export class HttpExceptionFilter implements ExceptionFilter {
       );
     }
 
+    const message = this.extractMessage(payload);
     response.status(status).json({
       statusCode: status,
-      message: this.extractMessage(payload),
+      message:
+        status === Number(HttpStatus.BAD_REQUEST) &&
+        isInvitationRequest(request.url) &&
+        Array.isArray(message)
+          ? 'Invalid invitation request'
+          : message,
       error: this.extractError(payload),
-      path: request.url,
+      path: invitationRequestPath(request.url),
       timestamp: new Date().toISOString(),
     });
   }

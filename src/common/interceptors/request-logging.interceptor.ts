@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { Request } from 'express';
 import { Observable, tap } from 'rxjs';
+import { invitationRequestPath } from '../utils/invitation-request-path';
 
 @Injectable()
 export class RequestLoggingInterceptor implements NestInterceptor {
@@ -19,7 +20,7 @@ export class RequestLoggingInterceptor implements NestInterceptor {
     return next.handle().pipe(
       tap(() => {
         this.logger.log(
-          `${request.method} ${request.url} ${Date.now() - startedAt}ms`,
+          `${request.method} ${invitationRequestPath(request.url)} ${Date.now() - startedAt}ms`,
         );
       }),
     );
