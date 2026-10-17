@@ -19,6 +19,8 @@ import { GroupReportsService } from './group-reports.service';
 import {
   EmptyGroupQueryDto,
   CreateGroupAccountDto,
+  GroupAccountsQueryDto,
+  RenameGroupAccountDto,
   CreateGroupExpenseDto,
   CreateGroupIncomeDto,
   UpdateGroupExpenseDto,
@@ -44,11 +46,11 @@ export class GroupFinancesController {
 
   @Get('accounts')
   async accounts(
-    @Query() _query: EmptyGroupQueryDto,
+    @Query() query: GroupAccountsQueryDto,
     @Param('groupId', ParseObjectIdPipe) groupId: string,
     @CurrentUser() user: AuthenticatedUser,
   ) {
-    return this.wallet.list(groupId, user.userId);
+    return this.wallet.list(groupId, user.userId, query);
   }
 
   @Post('accounts')
@@ -69,6 +71,29 @@ export class GroupFinancesController {
     @Param('id', ParseObjectIdPipe) id: string,
   ) {
     return this.wallet.get(groupId, user.userId, id);
+  }
+
+  @Patch('accounts/:id')
+  async renameAccount(
+    @Query() _query: EmptyGroupQueryDto,
+    @Param('groupId', ParseObjectIdPipe) groupId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseObjectIdPipe) id: string,
+    @Body() dto: RenameGroupAccountDto,
+  ) {
+    return this.wallet.rename(groupId, user.userId, id, dto.name);
+  }
+
+  @Post('accounts/:id/archive')
+  @HttpCode(204)
+  async archiveAccount(
+    @Query() _query: EmptyGroupQueryDto,
+    @Body() _body: EmptyGroupQueryDto,
+    @Param('groupId', ParseObjectIdPipe) groupId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseObjectIdPipe) id: string,
+  ) {
+    await this.wallet.archive(groupId, user.userId, id);
   }
 
   @Delete('accounts/:id')

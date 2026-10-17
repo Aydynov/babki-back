@@ -263,6 +263,20 @@ async function seedFamilyFinances(
       })
     )._id,
   );
+  await wallets.create(group.id, group.ownerId, {
+    name: 'Family bank',
+    type: 'balance',
+    currency: 'USD',
+    amount: 20000,
+    openedAt: getSeedDate(-2, 1, anchorDate),
+  });
+  await wallets.create(group.id, group.ownerId, {
+    name: 'Family reserve',
+    type: 'saving',
+    currency: 'USD',
+    amount: 50000,
+    openedAt: getSeedDate(-2, 1, anchorDate),
+  });
   for (const [name, color] of [
     ['Продукты', '#FF6B6B'],
     ['Дом', '#4ECDC4'],

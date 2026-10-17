@@ -337,7 +337,7 @@ describe('Group finance concurrent transactions (real replica set)', () => {
     expect(responses.map((r) => r.status)).toEqual([200, 200]);
     await checkBalance(-40);
   });
-  it('creates exactly one competing wallet', async () => {
+  it('creates independent competing accounts', async () => {
     await api('delete', `${base()}/accounts/${accountId}`).expect(204);
     const create = () =>
       api('post', `${base()}/accounts`, 0, {
@@ -346,9 +346,9 @@ describe('Group finance concurrent transactions (real replica set)', () => {
         openedAt: '2026-01-01T00:00:00.000Z',
       });
     expect((await race(create, create)).map((r) => r.status)).toEqual([
-      201, 409,
+      201, 201,
     ]);
-    expect(await collection('accounts').countDocuments(budget())).toBe(1);
+    expect(await collection('accounts').countDocuments(budget())).toBe(2);
   });
   it.each([true, false])(
     'serializes category deletion against expense creation (delete first: %s)',

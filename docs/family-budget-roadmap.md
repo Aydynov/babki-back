@@ -8,11 +8,11 @@
 
 ## Текущая точка
 
-- Завершены этапы **01 — финансовые права**, **02 — общие механизмы финансов** и **03 — валюты и отчёты**, все три цикла закрыты.
+- Завершены этапы **01 — финансовые права**, **02 — общие механизмы финансов** **03 — валюты и отчёты** и **04 — несколько счетов и накопления**, все четыре цикла закрыты.
 - Архив: [add-group-financial-management-permission](../openspec/changes/archive/2026-10-17-add-group-financial-management-permission/proposal.md).
-- Архив этапа 02: [unify-budget-financial-core](../openspec/changes/archive/2026-10-17-unify-budget-financial-core/proposal.md). Архив этапа 03: [add-group-currencies-and-report-contract](../openspec/changes/archive/2026-10-17-add-group-currencies-and-report-contract/proposal.md). Активных change нет; следующее действие — планирование этапа **04: несколько счетов и накопления**.
-- Этапы 04–10 запланированы, их OpenSpec-артефакты ещё не созданы.
-- Этапы 01–03 реализованы и проверены локальными unit/e2e; миграций нет, развёрнутый API не проверялся.
+- Архив этапа 02: [unify-budget-financial-core](../openspec/changes/archive/2026-10-17-unify-budget-financial-core/proposal.md). Архив этапа 03: [add-group-currencies-and-report-contract](../openspec/changes/archive/2026-10-17-add-group-currencies-and-report-contract/proposal.md). Архив этапа 04: [add-group-accounts-and-savings](../openspec/changes/archive/2026-10-17-add-group-accounts-and-savings/proposal.md). Активных change нет; следующее действие — планирование этапа **05: переводы внутри группы**.
+- Этапы 05–10 запланированы, их OpenSpec-артефакты ещё не созданы.
+- Этапы 01–04 реализованы и проверены локальными unit/e2e; миграций нет, развёрнутый API не проверялся.
 
 Этапы 01–02 зафиксированы коммитом `d1176da` — `Unified budget finances and added transaction permissions`.
 
@@ -162,22 +162,46 @@ Dev-данные: обновить seeds/fixtures и описать их пер�
 
 Все 18/18 задач применения завершены. Синхронизированы group-wallet (1 modified + 1 added), group-transactions (3 modified + 2 added), group-budget-settings (2 modified + 3 added); Purpose и прежние сценарии сохранены. `openspec validate --specs --no-interactive` — exit code 0, 15 passed / 0 failed; остаются предупреждения длины требований >500 символов, в том числе расширенного Group limits. Тексты не сокращались ради strict-проверки.
 
-Архив: `openspec/changes/archive/2026-10-17-add-group-currencies-and-report-contract/`, 2026-10-17 (Europe/Moscow), `.openspec.yaml` сохранён. Main specs сопоставлены с delta, все изменения синхронизированы. `openspec list --json` после перемещения — changes=[], exit code 0; `git diff --check` — exit code 0. Следующее действие — планирование этапа 04, его change ещё не создан. Коммит/публикация этапа 03 не выполнялись.
+Архив: `openspec/changes/archive/2026-10-17-add-group-currencies-and-report-contract/`, 2026-10-17 (Europe/Moscow), `.openspec.yaml` сохранён. Main specs сопоставлены с delta, все изменения синхронизированы. `openspec list --json` после перемещения — changes=[], exit code 0; `git diff --check` — exit code 0. Следующее действие — планирование этапа 04, его change ещё не создан. После завершения этапа 03 создан коммит `11564f1` — `Added group currencies and unified reports`, без co-authored. Публикация не выполнялась.
 
 ## 04. Несколько счетов и накопления
 
-- [ ] Создан change.
-- [ ] Применён.
-- [ ] Тестирование и build успешны; результаты записаны.
-- [ ] Архивирован; main specs синхронизированы.
+- [x] Создан change.
+- [x] Применён.
+- [x] Тестирование и build успешны; результаты записаны.
+- [x] Архивирован; main specs синхронизированы.
 
 Объём: использовать общие Account, balance/saving discriminators и жизненный цикл; снять одиночность группового balance; именованные счета, список/детали, rename, archive и безопасное удаление неиспользованного. История архивных счетов доступна, новые движения запрещены. Расширить общий построитель отчётов этапа 03 на реальный saving и архивные счета, проверив общий остаток по всем счетам. Явно обновить существующую group-wallet spec, запрещающую saving и второй счёт.
 
-До создания change согласовать: прямые доходы/расходы на saving либо только переводы; исправления исторических операций архивного счёта; необходимость group defaultAccountId (без необходимости не добавлять); отрицательные остатки saving. Пока этап 05 не применён, UI не должен обещать пополнение резерва переводом.
+Согласовано пользователем 2026-10-17: прямые доходы/расходы saving разрешены, отрицательный учётный остаток допустим; архив блокирует создание, PATCH и DELETE операций с сохранением чтения истории; group defaultAccountId пока не нужен, accountId выбирается явно. Пока этап 05 не применён, UI не должен обещать пополнение резерва переводом.
 
 Приёмка: общий резерв доступен обоим супругам, не теряет историю при archive, остатки и накопления не дублируются в отчётах; иностранные ссылки запрещены. Сценарий пополнения резервов окончательно закрывается этапом 05.
 
-Журнал: не начат.
+Журнал подготовки (2026-10-17): этап 03 закоммичен как `11564f1`. Изучены Account discriminators, общие create/list/get/remove, личные rename/archive, BudgetWriteService, активность счёта в TransactionsService и валютный построитель ReportsService. Переиспользование этих путей сохраняется требованием. Ответы пользователя получены и отражены в контракте. Созданы [proposal](../openspec/changes/archive/2026-10-17-add-group-accounts-and-savings/proposal.md), [design](../openspec/changes/archive/2026-10-17-add-group-accounts-and-savings/design.md), три delta specs (group-wallet, group-transactions, group-budget-settings) и [tasks](../openspec/changes/archive/2026-10-17-add-group-accounts-and-savings/tasks.md), 16 задач. `openspec validate add-group-accounts-and-savings --strict --no-interactive` — valid, exit code 0; status — 4/4 planning artifacts complete. Применение, unit/e2e/build и архивирование этапа 04 не выполнялись; код после коммита этапа 03 не менялся. Следующий шаг — apply этапа 04; этап 05 ещё не создан.
+
+Журнал применения (2026-10-17):
+
+- Общий AccountsService создаёт balance/saving без singleton, обслуживает owner-scoped renameForBudget/archiveForBudget и lifecycle lock. GroupWalletService/контроллер только адаптируют права, DTO и транзакцию; удалён неиспользуемый адаптер расчёта balance. Личный rename/archive/defaultAccountId и выбор snapshot сохраняют прежний контракт.
+- Новые групповые PATCH name и POST archive проверяют manageAccounts через существующую сериализацию. Архив замораживает финансовые create/PATCH/DELETE через общие account lookup/locks с archivedAt:null. Read/filter истории и revenue не исключают архивные счета. Ненулевой opening и любая история по-прежнему дают RESTRICT; пустой архивный счёт удаляется атомарно со снимками.
+- Saving использует общие IncomesService/ExpensesService, допускает прямые операции и отрицательный остаток. Валютные precision/openedAt и права участников сохранены. ReportsService распределяет остатки по type для обоих бюджетов; balance не дублирует saving, архивные счета входят в суммы, initialAmount/archive не создают финансовых операций. Новых моделей, индексов, зависимостей, миграции или reset данных нет.
+- TDD: group-accounts-savings сначала 6 failed (type/singleton); lifecycle сначала 2 failed (404 отсутствующих PATCH/archive); report raw-fixture выявила saving=0 вместо RUB55/KWD0.001; seed ожидал пять активных счетов вместо трёх. После реализации все новые сценарии прошли. В seed e2e anchor заменён с будущего 2030 на фиксированный март 2024: current amount до будущего openedAt корректно был 0, производственный расчёт не менялся.
+- Узкие наборы: accounts/currency/group finances/concurrency/accounts-deletion — `npm run test:e2e -- --runInBand group-accounts-savings group-currency-transactions group-finances.e2e group-finances-concurrency accounts-deletion-concurrency`, exit code 0, 5 suites / 52 tests; lifecycle — `npm run test:e2e -- --runInBand test/group-account-lifecycle.e2e-spec.ts`, exit code 0, 16 tests; reports/currency-reports/personal-history/multicurrency/seed — 5 suites / 14 tests, exit code 0.
+- `npm run test -- --runInBand` — exit code 0, 53 suites / 300 tests passed, 4.06 s. `npm run build` — exit code 0. Prettier и ESLint всех 14 затронутых/новых TS-файлов — exit code 0. `git diff --check` и `openspec validate add-group-accounts-and-savings --strict --no-interactive` — exit code 0. Независимое ревью корректности/безопасности/соответствия specs: существенных замечаний нет.
+- Документация: group-finances-api.md, budget-financial-core.md, group-finances-seed.md. Seeds дополнены Family bank USD20000 и Family reserve USD50000; исходные операции и прежний кошелёк не заменены. Оба супруга читают резерв и одинаковый отчёт: USD balance292749.5/saving50000/incomes180000/expenses27250.5. Seed рабочей базы и deploy/live API не запускались.
+
+Покрытие delta-сценариев:
+
+| Контракт | Проверки |
+| --- | --- |
+| Несколько одинаковых/разновалютных счетов, default type, immutable fields, фильтры, foreign isolation, отсутствие defaultAccountId | group-accounts-savings; group-account-lifecycle; group-currency-transactions |
+| Rename/archive, history/revenue/limits/report, used/empty archive DELETE, permissions/stale JWT | group-account-lifecycle; прежние group-finances/isolation/financial-management |
+| Archive vs create/PATCH/DELETE (income/expense), revoke/remove vs rename/archive, обе последовательности и точные snapshots/ledger | group-account-lifecycle explicit barriers; group-finances-concurrency; accounts-deletion-concurrency |
+| Saving direct income/expense, negative, author/participant, limits и JPY/RUB/KWD precision/openedAt/edit/delete | group-accounts-savings; group-currency-transactions |
+| Общие report totals без double-count, archived/history/currency/category-filter, сохранённые личные defaults/snapshots | group-savings-reports; group-currency-reports; personal-report-history; multicurrency; budget-core-compatibility; seed e2e |
+
+Итоговый полный `npm run test:e2e -- --runInBand` — exit code 0, 27 suites / 177 tests passed, 115.759 s. Среда: временные локальные MongoDB replica sets и loopback HTTP с разрешением вне ограничений сокетов песочницы; рабочая база не использовалась. Все 16/16 задач применения завершены; ограничения отката описаны в API/design. Синхронизированы group-wallet, group-transactions и group-budget-settings: 2 modified и 6 added requirements, прежние сценарии и Purpose сохранены. `openspec validate --specs --no-interactive` — exit code 0, 15 passed / 0 failed, с предупреждениями о длине требований; unrelated тексты не сокращались ради strict.
+
+Архив: `openspec/changes/archive/2026-10-17-add-group-accounts-and-savings/`, 2026-10-17 (Europe/Moscow), `.openspec.yaml` сохранён, содержимое main specs сопоставлено с delta. `openspec list --json` после перемещения — changes=[], exit code 0; `git diff --check` — exit code 0. Следующее действие — планирование этапа 05; его change не создан. Коммит/публикация этапа 04 не выполнялись.
 
 ## 05. Переводы внутри группы
 

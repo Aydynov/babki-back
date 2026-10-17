@@ -347,7 +347,7 @@ export class TransactionsService {
         )
       ).account;
     const account = await this.accountModel
-      .findOne({ _id: accountId, ...budgetFilter(budget) })
+      .findOne({ _id: accountId, ...budgetFilter(budget), archivedAt: null })
       .session(session)
       .lean()
       .exec();
@@ -373,7 +373,7 @@ export class TransactionsService {
         {
           _id: id,
           ...budgetFilter(budget),
-          ...(budget.ownerType === 'user' ? { archivedAt: null } : {}),
+          archivedAt: null,
         },
         { $inc: { mutationVersion: 1 } },
         { session },

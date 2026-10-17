@@ -43,7 +43,7 @@ describe('Group finances HTTP', () => {
     category = (c.body as { _id: string })._id;
     await call('post', `/groups/${group}/accounts`)
       .send({ name: 'Family', currency: 'USD' })
-      .expect(409);
+      .expect(201);
   });
   it('attributes expenses to another member while recording the author', async () => {
     const invite = await call('post', `/groups/${group}/invitations`)

@@ -210,7 +210,7 @@ export class ReportsService {
               )) {
                 const amount = await balanceAt(account, endDate);
                 if (account.type === 'balance') balance += amount;
-                else if (budget.ownerType === 'user') saving += amount;
+                else if (account.type === 'saving') saving += amount;
               }
               return {
                 currency,

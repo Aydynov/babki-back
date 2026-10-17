@@ -83,10 +83,10 @@ describe('Group account and transaction currency contract', () => {
     ).toMatchObject([{ currency: 'KWD', amount: 0.001 }]);
     await api('post', `${base}/accounts`)
       .send({ name: 'Second', currency: 'USD' })
-      .expect(409);
+      .expect(201);
     await api('patch', `${base}/accounts/${idOf(r)}`)
       .send({ currency: 'USD' })
-      .expect(404);
+      .expect(400);
     expect(
       (await api('get', `${base}/accounts/${idOf(r)}`).expect(200)).body,
     ).toMatchObject({ currency: 'KWD' });

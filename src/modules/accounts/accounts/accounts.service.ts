@@ -75,18 +75,11 @@ export class AccountsService {
     const currency = normalizeCurrency(dto.currency!);
     if (!hasValidMoneyPrecision(amount, currency))
       throw new BadRequestException('Amount exceeds currency precision.');
-    if (
-      !personal &&
-      (await this.accountModel
-        .exists({ ...budgetFilter(budget), type: 'balance' })
-        .session(session))
-    )
-      throw new ConflictException('Wallet already exists');
     const [createdEntity] = await this.accountModel.create(
       [
         {
           ...budgetFilter(budget),
-          type: personal ? dto.type : 'balance',
+          type: dto.type ?? 'balance',
           name: dto.name!.trim(),
           currency,
           initialAmount: amount,
@@ -155,6 +148,7 @@ export class AccountsService {
     budget: BudgetContext,
     accounts: Array<Account & { _id: Types.ObjectId }>,
     query?: { toDate?: string },
+    session?: ClientSession,
   ) {
     if (budget.ownerType === 'user')
       return this.buildResponse(accounts as AccountDocument[], query);
@@ -164,8 +158,12 @@ export class AccountsService {
         amount: await this.snapshotsService.balanceForBudget(
           account,
           new Date(),
+          session,
         ),
-        timeline: await this.snapshotsService.timelineForBudget(account._id),
+        timeline: await this.snapshotsService.timelineForBudget(
+          account._id,
+          session,
+        ),
       })),
     );
   }
@@ -174,18 +172,37 @@ export class AccountsService {
     return this.getForBudget(personalBudget(userId), accountId);
   }
 
-  async rename(userId: string, accountId: string, name: string) {
+  rename(userId: string, accountId: string, name: string) {
+    return this.renameForBudget(personalBudget(userId), accountId, name);
+  }
+
+  async renameForBudget(
+    budget: BudgetContext,
+    accountId: string,
+    name: string,
+    session?: ClientSession,
+  ) {
     const account = await this.accountModel
       .findOneAndUpdate(
-        { _id: accountId, ...personalBudget(userId) },
+        { _id: accountId, ...budgetFilter(budget) },
         { $set: { name: name.trim() } },
-        { returnDocument: 'after', runValidators: true },
+        {
+          returnDocument: 'after',
+          runValidators: true,
+          ...(session ? { session } : {}),
+        },
       )
       .lean()
       .exec();
     if (!account)
-      throw new NotFoundException(`Account ${accountId} not found.`);
-    return (await this.buildResponse([account]))[0];
+      throw new NotFoundException(
+        budget.ownerType === 'user'
+          ? `Account ${accountId} not found.`
+          : 'Account not found',
+      );
+    return (
+      await this.responseForBudget(budget, [account], undefined, session)
+    )[0];
   }
 
   async deleteEntity(userId: string, entityId: string) {
@@ -201,7 +218,7 @@ export class AccountsService {
   ) {
     const personal = budget.ownerType === 'user';
     const userId = String(budget.ownerId);
-    if (personal) await this.lockAccountForLifecycle(userId, entityId, session);
+    await this.lockAccountForLifecycle(budget, entityId, session);
     const account = await this.accountModel
       .findOne({ _id: entityId, ...budgetFilter(budget) })
       .session(session)
@@ -242,24 +259,34 @@ export class AccountsService {
     return null;
   }
 
-  async archive(userId: string, entityId: string) {
-    return this.write.run(personalBudget(userId), userId, async (session) => {
-      await this.lockAccountForLifecycle(userId, entityId, session);
-      const archived = await this.accountModel
-        .findOneAndUpdate(
-          {
-            _id: entityId,
-            ...personalBudget(userId),
-            archivedAt: null,
-          },
-          { $set: { archivedAt: new Date() } },
-          { returnDocument: 'after', session },
-        )
-        .lean()
-        .exec();
-      if (!archived) throw new DeletionTargetNotFoundException('Account');
-      await this.usersService.clearDefaultAccount(userId, entityId, session);
-    });
+  archive(userId: string, entityId: string) {
+    const budget = personalBudget(userId);
+    return this.write.run(budget, userId, (session) =>
+      this.archiveForBudget(budget, entityId, session),
+    );
+  }
+
+  async archiveForBudget(
+    budget: BudgetContext,
+    entityId: string,
+    session: ClientSession,
+  ) {
+    await this.lockAccountForLifecycle(budget, entityId, session);
+    const archived = await this.accountModel
+      .findOneAndUpdate(
+        { _id: entityId, ...budgetFilter(budget), archivedAt: null },
+        { $set: { archivedAt: new Date() } },
+        { returnDocument: 'after', session },
+      )
+      .lean()
+      .exec();
+    if (!archived) throw new DeletionTargetNotFoundException('Account');
+    if (budget.ownerType === 'user')
+      await this.usersService.clearDefaultAccount(
+        String(budget.ownerId),
+        entityId,
+        session,
+      );
   }
 
   async buildResponse(
@@ -293,12 +320,12 @@ export class AccountsService {
   }
 
   private async lockAccountForLifecycle(
-    userId: string,
+    budget: BudgetContext,
     entityId: string,
     session: ClientSession,
   ) {
     const locked = await this.accountModel.updateOne(
-      { _id: entityId, ...personalBudget(userId) },
+      { _id: entityId, ...budgetFilter(budget) },
       { $inc: { mutationVersion: 1 } },
       { session },
     );

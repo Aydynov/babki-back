@@ -18,8 +18,29 @@ import {
 import { PaginationQueryDto } from '../../../common/dto/pagination-query.dto';
 import { ExpenseItemFieldsDto } from '../../transactions/expenses/dto/expense-item.dto';
 import { SUPPORTED_CURRENCY_CODES } from 'src/common/money/money';
+import {
+  accountTypes,
+  type AccountType,
+} from '../../accounts/schemas/accounts.schema';
+import { UpdateAccountDto } from '../../accounts/dto/update-account.dto';
 const optional = (_: unknown, value: unknown) => value !== undefined;
+export class GroupAccountsQueryDto {
+  @ValidateIf(optional) @IsIn(accountTypes) type?: AccountType;
+  @ValidateIf(optional)
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.trim().toUpperCase() : value,
+  )
+  @IsIn(SUPPORTED_CURRENCY_CODES)
+  currency?: string;
+}
+export class RenameGroupAccountDto extends UpdateAccountDto {
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.trim() : value,
+  )
+  declare name: string;
+}
 export class CreateGroupAccountDto {
+  @ValidateIf(optional) @IsIn(accountTypes) type?: AccountType;
   @Transform(({ value }: { value: unknown }) =>
     typeof value === 'string' ? value.trim() : value,
   )
