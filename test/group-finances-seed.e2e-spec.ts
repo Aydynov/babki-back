@@ -50,7 +50,7 @@ describe('Group finances development seed (real replica set)', () => {
         ownerType: 'group',
         ownerId: { $in: groupIds },
       }),
-    ).toBe(9);
+    ).toBe(10);
 
     for (const collection of ['accounts', 'transactions', 'expenselimits']) {
       expect(
@@ -64,6 +64,52 @@ describe('Group finances development seed (real replica set)', () => {
     }
 
     for (const member of [alex, maria]) {
+      const plans = await request(
+        fixture.app.getHttpServer() as Parameters<typeof request>[0],
+      )
+        .get(`/api/v1/groups/${result.family.id}/plans`)
+        .auth(member.token, { type: 'bearer' })
+        .expect(200);
+      const planRows = plans.body as {
+        items: { status: string; amount: number; expenseId?: string }[];
+        total: number;
+      };
+      expect(planRows.total).toBe(2);
+      expect(planRows.items).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ status: 'active', amount: 2000 }),
+          expect.objectContaining({
+            status: 'closed',
+            amount: 1000,
+            expenseId: expect.any(String) as string,
+          }),
+        ]),
+      );
+      const closed = planRows.items.find((plan) => plan.status === 'closed')!;
+      const expense = await request(
+        fixture.app.getHttpServer() as Parameters<typeof request>[0],
+      )
+        .get(`/api/v1/groups/${result.family.id}/expenses/${closed.expenseId}`)
+        .auth(member.token, { type: 'bearer' })
+        .expect(200);
+      expect(expense.body).toMatchObject({
+        amount: 1200,
+        participantId: maria.id,
+        origin: { type: 'plan' },
+      });
+      const limits = await request(
+        fixture.app.getHttpServer() as Parameters<typeof request>[0],
+      )
+        .get(
+          `/api/v1/groups/${result.family.id}/expense-limits?periodDate=2024-03-15`,
+        )
+        .auth(member.token, { type: 'bearer' })
+        .expect(200);
+      expect(limits.body).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ total: 50000, rest: 40349.5 }),
+        ]),
+      );
       const reserveResponse = await request(
         fixture.app.getHttpServer() as Parameters<typeof request>[0],
       )
@@ -104,8 +150,8 @@ describe('Group finances development seed (real replica set)', () => {
         {
           currency: 'USD',
           incomes: 180000,
-          expenses: 27250.5,
-          balance: 291749.5,
+          expenses: 28450.5,
+          balance: 290549.5,
           saving: 51000,
           transfersIn: 1000,
           transfersOut: 1000,
@@ -113,7 +159,7 @@ describe('Group finances development seed (real replica set)', () => {
       ]);
       expect(rows[0].currencies[0].expensesByCategory).toEqual(
         expect.arrayContaining([
-          { categoryId: result.family.categories['Продукты'], total: 8450.5 },
+          { categoryId: result.family.categories['Продукты'], total: 9650.5 },
           { categoryId: result.family.categories['Дом'], total: 15600 },
           { categoryId: result.family.categories['Досуг'], total: 3200 },
         ]),
@@ -172,13 +218,14 @@ describe('Group finances development seed (real replica set)', () => {
       .auth(alex.token, { type: 'bearer' })
       .expect(200)
       .expect(({ body }: { body: { amount: number } }) =>
-        expect(body.amount).toBe(271749.5),
+        expect(body.amount).toBe(270549.5),
       );
 
     const attributedExpense = await fixture.connection
       .collection('transactions')
       .findOne({
         ownerId: new Types.ObjectId(result.family.id),
+        description: 'Покупки за Марию',
         createdBy: new Types.ObjectId(alex.id),
         participantId: new Types.ObjectId(maria.id),
       });

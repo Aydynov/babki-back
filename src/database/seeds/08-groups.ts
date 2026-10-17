@@ -2,6 +2,7 @@ import { INestApplicationContext } from '@nestjs/common';
 import { getModelToken } from '@nestjs/mongoose';
 import { createHash } from 'node:crypto';
 import { Model } from 'mongoose';
+import { GroupPlansService } from '../../modules/group-finances/group-plans.service';
 import { GroupTransfersService } from '../../modules/group-finances/group-transfers.service';
 import { GroupSettingsService } from '../../modules/group-finances/group-settings.service';
 import { GroupTransactionsService } from '../../modules/group-finances/group-transactions.service';
@@ -75,6 +76,7 @@ export async function seedGroups(
     settings,
     transactions,
     app.get(GroupTransfersService),
+    app.get(GroupPlansService),
     family,
     users,
     anchorDate,
@@ -252,6 +254,7 @@ async function seedFamilyFinances(
   settings: GroupSettingsService,
   transactions: GroupTransactionsService,
   transfers: GroupTransfersService,
+  plans: GroupPlansService,
   group: GroupFixture,
   users: SeedUserMap,
   anchorDate: Date,
@@ -327,6 +330,26 @@ async function seedFamilyFinances(
     amount: 3200,
     transactionDate: getSeedDate(0, 15, anchorDate),
     description: 'Исторический расход бывшего участника',
+  });
+  await plans.create(group.id, users.maria, {
+    description: 'Семейная покупка: запланировано',
+    currency: 'USD',
+    amount: 2000,
+    targetDate: getSeedDate(1, 10, anchorDate),
+    categoryId: group.categories['Дом'],
+  });
+  const completed = await plans.create(group.id, users.alex, {
+    description: 'Семейная покупка: исполнено',
+    currency: 'USD',
+    amount: 1000,
+    targetDate: getSeedDate(0, 12, anchorDate),
+    categoryId: group.categories['Продукты'],
+  });
+  await plans.close(group.id, users.alex, String(completed._id), {
+    accountId: group.accountId,
+    amount: 1200,
+    participantId: users.maria,
+    closingDate: getSeedDate(0, 12, anchorDate),
   });
   await transfers.create(group.id, group.ownerId, {
     sourceAccountId: group.accountId,

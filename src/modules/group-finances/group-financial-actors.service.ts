@@ -6,7 +6,7 @@ import { GroupFinancialActor } from './interfaces/group-financial-actor.interfac
 
 interface ActorTransaction {
   createdBy: Types.ObjectId;
-  type: string;
+  type?: string;
   participantId?: Types.ObjectId;
 }
 

@@ -10,8 +10,8 @@
 
 - Завершены этапы **01 — финансовые права**, **02 — общие механизмы финансов** **03 — валюты и отчёты** и **04 — несколько счетов и накопления**, и **05 — переводы внутри группы**, и **06 — предпросмотр приглашения**, и **07 — исторические авторы и участники**, все семь циклов закрыты.
 - Архив: [add-group-financial-management-permission](../openspec/changes/archive/2026-10-17-add-group-financial-management-permission/proposal.md).
-- Архив этапа 02: [unify-budget-financial-core](../openspec/changes/archive/2026-10-17-unify-budget-financial-core/proposal.md). Архив этапа 03: [add-group-currencies-and-report-contract](../openspec/changes/archive/2026-10-17-add-group-currencies-and-report-contract/proposal.md). Архив этапа 04: [add-group-accounts-and-savings](../openspec/changes/archive/2026-10-17-add-group-accounts-and-savings/proposal.md). Архив этапа 05: [add-group-account-transfers](../openspec/changes/archive/2026-10-17-add-group-account-transfers/proposal.md). Архив этапа 06: [add-group-invitation-preview](../openspec/changes/archive/2026-10-17-add-group-invitation-preview/proposal.md). Архив этапа 07: [resolve-group-historical-actors](../openspec/changes/archive/2026-10-17-resolve-group-historical-actors/proposal.md). Активных change нет. Следующее действие — отдельное планирование этапа 08, общие планы.
-- Этап 05 реализован, проверен, зафиксирован коммитом до архивирования; цикл закрыт. Этап 06 реализован, проверен, закоммичен до архивирования; архив закреплён коммитом `08bea63`. Этап 07 реализован, проверен и закоммичен до архивирования; архив фиксируется вторым коммитом. Этапы 08–10 запланированы, их OpenSpec-артефакты ещё не созданы.
+- Архив этапа 02: [unify-budget-financial-core](../openspec/changes/archive/2026-10-17-unify-budget-financial-core/proposal.md). Архив этапа 03: [add-group-currencies-and-report-contract](../openspec/changes/archive/2026-10-17-add-group-currencies-and-report-contract/proposal.md). Архив этапа 04: [add-group-accounts-and-savings](../openspec/changes/archive/2026-10-17-add-group-accounts-and-savings/proposal.md). Архив этапа 05: [add-group-account-transfers](../openspec/changes/archive/2026-10-17-add-group-account-transfers/proposal.md). Архив этапа 06: [add-group-invitation-preview](../openspec/changes/archive/2026-10-17-add-group-invitation-preview/proposal.md). Архив этапа 07: [resolve-group-historical-actors](../openspec/changes/archive/2026-10-17-resolve-group-historical-actors/proposal.md). Активен change этапа **08: общие планы** — [add-group-budget-plans](../openspec/changes/add-group-budget-plans/proposal.md). Реализация и финальная проверка завершены; далее коммит реализации и архив отдельным коммитом.
+- Этап 05 реализован, проверен, зафиксирован коммитом до архивирования; цикл закрыт. Этап 06 реализован, проверен, закоммичен до архивирования; архив закреплён коммитом `08bea63`. Этап 07 реализован, проверен и закоммичен до архивирования; архив зафиксирован коммитом `980c7b5`. Этап 08 реализован и проверен; архив ещё не завершён. Этапы 09–10 запланированы, их OpenSpec-артефакты ещё не созданы.
 - Этапы 01–07 реализованы и проверены локальными unit/e2e; миграций нет, развёрнутый API не проверялся.
 
 Этапы 01–02 зафиксированы коммитом `d1176da` — `Unified budget finances and added transaction permissions`.
@@ -33,18 +33,18 @@
 
 ## Порядок и зависимости
 
-| № | Планируемый change | Результат | Требует | Пробелы источника |
-| --- | --- | --- | --- | --- |
-| 01 | `add-group-financial-management-permission` | manageTransactions, собственные permissions | — | §2, §9.1, часть §10 |
-| 02 | `unify-budget-financial-core` | общие механизмы действующих финансов без смены внешнего поведения | 01 | сквозное требование пользователя |
-| 03 | `add-group-currencies-and-report-contract` | явные валюты, миграция, валютные корзины отчётов | 02 | §1, §3 |
-| 04 | `add-group-accounts-and-savings` | несколько счетов balance/saving, жизненный цикл, учёт накоплений | 03 | §4, дополнение §3 |
-| 05 | `add-group-account-transfers` | атомарные переводы между счетами группы и их отчётность | 04 | §5, дополнение §3 |
-| 06 | `add-group-invitation-preview` | безопасный предпросмотр без вступления | 01; в очереди после 05 | §8 |
-| 07 | `resolve-group-historical-actors` | имена/обезличивание исторических субъектов | 01; в очереди после 06 | §9.2 |
-| 08 | `add-group-budget-plans` | общая модель планов для user/group и исполнение | 03–05; в очереди после 07 | §6 |
-| 09 | `add-group-budget-debts` | общая модель долгов для user/group и погашение | 03–05, 07; в очереди после 08 | §7 |
-| 10 | `verify-family-budget-contract` | финальная сверка контрактов и семейного сценария | 01–09 | §10 и приёмка §1–9 |
+| №   | Планируемый change                          | Результат                                                         | Требует                       | Пробелы источника                |
+| --- | ------------------------------------------- | ----------------------------------------------------------------- | ----------------------------- | -------------------------------- |
+| 01  | `add-group-financial-management-permission` | manageTransactions, собственные permissions                       | —                             | §2, §9.1, часть §10              |
+| 02  | `unify-budget-financial-core`               | общие механизмы действующих финансов без смены внешнего поведения | 01                            | сквозное требование пользователя |
+| 03  | `add-group-currencies-and-report-contract`  | явные валюты, миграция, валютные корзины отчётов                  | 02                            | §1, §3                           |
+| 04  | `add-group-accounts-and-savings`            | несколько счетов balance/saving, жизненный цикл, учёт накоплений  | 03                            | §4, дополнение §3                |
+| 05  | `add-group-account-transfers`               | атомарные переводы между счетами группы и их отчётность           | 04                            | §5, дополнение §3                |
+| 06  | `add-group-invitation-preview`              | безопасный предпросмотр без вступления                            | 01; в очереди после 05        | §8                               |
+| 07  | `resolve-group-historical-actors`           | имена/обезличивание исторических субъектов                        | 01; в очереди после 06        | §9.2                             |
+| 08  | `add-group-budget-plans`                    | общая модель планов для user/group и исполнение                   | 03–05; в очереди после 07     | §6                               |
+| 09  | `add-group-budget-debts`                    | общая модель долгов для user/group и погашение                    | 03–05, 07; в очереди после 08 | §7                               |
+| 10  | `verify-family-budget-contract`             | финальная сверка контрактов и семейного сценария                  | 01–09                         | §10 и приёмка §1–9               |
 
 Зависимость и порядок очереди различаются: preview технически можно сделать раньше, но по умолчанию работа последовательна. Для изменения очереди обновить этот документ и причину. Этап 02 добавлен перед расширением финансов, чтобы новые групповые возможности строились на общих механизмах. Оба P0 закрываются этапами 01–03; последующие этапы добавляют полноту сценария.
 
@@ -152,13 +152,13 @@ Dev-данные: обновить seeds/fixtures и описать их пер�
 
 Покрытие delta-сценариев:
 
-| Контракт | Проверки |
-| --- | --- |
-| Обязательные name/currency, immutable currency, precision 0/2/3, разные defaultCurrency, singleton | group-currency-transactions; group-finances/concurrency/isolation |
-| Операции amount/price create/PATCH, точная компенсация, read-only currency, фильтры/revenue 0/одна сумма/null | group-currency-transactions; group-financial-management |
-| Валютные лимиты, precision/immutable/filter, usage owner/category/currency, UTC границы, update/concurrent overlap | group-currency-limits; budget-settings-compatibility; group-finances-concurrency |
-| Валютный report DTO, empty, initialAmount/openedAt, UTC история, category filter, archive/departed/deleted, isolation/sorting | group-currency-reports; group-finances-boundaries/isolation; group-finances |
-| Личные DTO, валюты и snapshots, permissions/lifecycle/auth | budget-core-compatibility; personal-report-history; multicurrency; прежние unit/e2e-наборы |
+| Контракт                                                                                                                      | Проверки                                                                                   |
+| ----------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| Обязательные name/currency, immutable currency, precision 0/2/3, разные defaultCurrency, singleton                            | group-currency-transactions; group-finances/concurrency/isolation                          |
+| Операции amount/price create/PATCH, точная компенсация, read-only currency, фильтры/revenue 0/одна сумма/null                 | group-currency-transactions; group-financial-management                                    |
+| Валютные лимиты, precision/immutable/filter, usage owner/category/currency, UTC границы, update/concurrent overlap            | group-currency-limits; budget-settings-compatibility; group-finances-concurrency           |
+| Валютный report DTO, empty, initialAmount/openedAt, UTC история, category filter, archive/departed/deleted, isolation/sorting | group-currency-reports; group-finances-boundaries/isolation; group-finances                |
+| Личные DTO, валюты и snapshots, permissions/lifecycle/auth                                                                    | budget-core-compatibility; personal-report-history; multicurrency; прежние unit/e2e-наборы |
 
 Все 18/18 задач применения завершены. Синхронизированы group-wallet (1 modified + 1 added), group-transactions (3 modified + 2 added), group-budget-settings (2 modified + 3 added); Purpose и прежние сценарии сохранены. `openspec validate --specs --no-interactive` — exit code 0, 15 passed / 0 failed; остаются предупреждения длины требований >500 символов, в том числе расширенного Group limits. Тексты не сокращались ради strict-проверки.
 
@@ -191,13 +191,13 @@ Dev-данные: обновить seeds/fixtures и описать их пер�
 
 Покрытие delta-сценариев:
 
-| Контракт | Проверки |
-| --- | --- |
-| Несколько одинаковых/разновалютных счетов, default type, immutable fields, фильтры, foreign isolation, отсутствие defaultAccountId | group-accounts-savings; group-account-lifecycle; group-currency-transactions |
-| Rename/archive, history/revenue/limits/report, used/empty archive DELETE, permissions/stale JWT | group-account-lifecycle; прежние group-finances/isolation/financial-management |
-| Archive vs create/PATCH/DELETE (income/expense), revoke/remove vs rename/archive, обе последовательности и точные snapshots/ledger | group-account-lifecycle explicit barriers; group-finances-concurrency; accounts-deletion-concurrency |
-| Saving direct income/expense, negative, author/participant, limits и JPY/RUB/KWD precision/openedAt/edit/delete | group-accounts-savings; group-currency-transactions |
-| Общие report totals без double-count, archived/history/currency/category-filter, сохранённые личные defaults/snapshots | group-savings-reports; group-currency-reports; personal-report-history; multicurrency; budget-core-compatibility; seed e2e |
+| Контракт                                                                                                                           | Проверки                                                                                                                   |
+| ---------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| Несколько одинаковых/разновалютных счетов, default type, immutable fields, фильтры, foreign isolation, отсутствие defaultAccountId | group-accounts-savings; group-account-lifecycle; group-currency-transactions                                               |
+| Rename/archive, history/revenue/limits/report, used/empty archive DELETE, permissions/stale JWT                                    | group-account-lifecycle; прежние group-finances/isolation/financial-management                                             |
+| Archive vs create/PATCH/DELETE (income/expense), revoke/remove vs rename/archive, обе последовательности и точные snapshots/ledger | group-account-lifecycle explicit barriers; group-finances-concurrency; accounts-deletion-concurrency                       |
+| Saving direct income/expense, negative, author/participant, limits и JPY/RUB/KWD precision/openedAt/edit/delete                    | group-accounts-savings; group-currency-transactions                                                                        |
+| Общие report totals без double-count, archived/history/currency/category-filter, сохранённые личные defaults/snapshots             | group-savings-reports; group-currency-reports; personal-report-history; multicurrency; budget-core-compatibility; seed e2e |
 
 Итоговый полный `npm run test:e2e -- --runInBand` — exit code 0, 27 suites / 177 tests passed, 115.759 s. Среда: временные локальные MongoDB replica sets и loopback HTTP с разрешением вне ограничений сокетов песочницы; рабочая база не использовалась. Все 16/16 задач применения завершены; ограничения отката описаны в API/design. Синхронизированы group-wallet, group-transactions и group-budget-settings: 2 modified и 6 added requirements, прежние сценарии и Purpose сохранены. `openspec validate --specs --no-interactive` — exit code 0, 15 passed / 0 failed, с предупреждениями о длине требований; unrelated тексты не сокращались ради strict.
 
@@ -288,22 +288,47 @@ Privacy-набор использует реальные UserDeletionService.req
 
 Итоговая проверка: `npm run test -- --runInBand` — exit code 0, 56 suites / 341 tests passed (4.181 s); `npm run test:e2e -- --runInBand` — exit code 0, 35 suites / 284 tests passed (156.644 s); `npm run build` — exit code 0. Scoped `npx prettier --check` и `npx eslint --no-warn-ignored` для 8 изменённых TS-файлов — exit code 0; `git diff --check` — exit code 0. `openspec validate resolve-group-historical-actors --strict --no-interactive` — valid, exit code 0. Все проверки локальные, e2e — временные MongoDB replica sets и HTTP; полные unit/e2e получили разрешение loopback-сокетов. Все delta-сценарии сопоставлены с actor HTTP/privacy, unit resolver и действующими permissions/concurrency/deletion/compatibility наборами. 12/12 задач завершены. Код готов к первому коммиту; change пока активен.
 
-Завершение (2026-10-17): первый коммит `4d894c9` — `Added group historical actor summaries`, без co-authored, создан до sync и архива. Затем group-transactions синхронизирована (одно MODIFIED и четыре ADDED требования), Purpose и прежние сценарии сохранены, все delta-блоки сверены с main. `openspec validate --specs --no-interactive` — exit code 0, 15 passed / 0 failed; существующие предупреждения длинных требований сохранены. Строгая валидация change перед переносом — valid, exit code 0. Change перемещён в `openspec/changes/archive/2026-10-17-resolve-group-historical-actors/`; после переноса `openspec list --json` — changes=[], exit code 0; `git diff --check` — exit code 0. Sync, архив и этот журнал включаются во второй коммит `Archived group historical actors change`, без co-authored. Публикация не выполнялась. Этап 08 не создан; следующий шаг — его отдельное планирование.
+Завершение (2026-10-17): первый коммит `4d894c9` — `Added group historical actor summaries`, без co-authored, создан до sync и архива. Затем group-transactions синхронизирована (одно MODIFIED и четыре ADDED требования), Purpose и прежние сценарии сохранены, все delta-блоки сверены с main. `openspec validate --specs --no-interactive` — exit code 0, 15 passed / 0 failed; существующие предупреждения длинных требований сохранены. Строгая валидация change перед переносом — valid, exit code 0. Change перемещён в `openspec/changes/archive/2026-10-17-resolve-group-historical-actors/`; после переноса `openspec list --json` — changes=[], exit code 0; `git diff --check` — exit code 0. Sync, архив и этот журнал включены во второй коммит `980c7b5` — `Archived group historical actors change`, без co-authored. Публикация не выполнялась. Этап 08 не создан; следующий шаг — его отдельное планирование.
 
 ## 08. Общие планы
 
-- [ ] Создан change.
-- [ ] Применён; совместимость/миграция проверены.
-- [ ] Тестирование и build успешны; результаты записаны.
+- [x] Создан change.
+- [x] Применён; совместимость/миграция проверены.
+- [x] Тестирование и build успешны; результаты записаны.
 - [ ] Архивирован; main specs синхронизированы.
 
 Объём: расширить существующие Plan, PlansService и связку Transaction.origin на ownerType/ownerId/createdBy; личный API оставить адаптером общего сервиса. Групповые список/детали/create/update/archive/delete/execute, валюта, срок и категория своей группы. Исполнение вызывает общий механизм расходов с той же ClientSession, без внутренних HTTP-запросов к личному API.
 
-До создания change согласовать: частичное или только полное исполнение, плановая/фактическая сумма, связь с существующим расходом, отмена исполнения, изменение/удаление связанного расхода, права автора и делегата. Добавить group-бюджет в проверки удаления/архивирования категорий и счетов и удаления пользователя/группы; мигрировать личные планы без смены их смысла.
+Согласовано пользователем 2026-10-17: однократное полное исполнение новым расходом, фактическая сумма может отличаться от плановой, валюта счёта совпадает с планом. Create/read любым действующим участником; изменение/исполнение/архив/удаление — автор, владелец или manageTransactions. Автор расхода — исполнитель, participantId optional из действующих членов, по умолчанию исполнитель. Обычный PATCH/DELETE расхода сохраняет closed, planned amount и expenseId/origin; частичного исполнения, готового расхода и cancel/reopen нет. Личные планы мигрируются без смены смысла.
 
 Приёмка: второй уполномоченный участник исполняет чужой план с семейного счёта; расход возникает один раз, личный бюджет не меняется; повторное/конкурентное исполнение и ошибка любой записи не нарушают связи и баланс. Сам план не является фактическим расходом.
 
-Журнал: не начат.
+Подготовка (2026-10-17): этап 07 закрыт двумя коммитами `4d894c9` / `980c7b5`. Исследованы Plan/PlansService/DTO/controller/module, shared ExpensesService и origin, category RESTRICT, UserDeletionWorker, integrity audit/migration и seeds. Личное close создаёт новый расход один раз, допускает фактическую сумму вместо плановой; закрытый план нельзя удалить, можно архивировать. Логическое удаление расхода сохраняет закрытый план/expenseId/origin. Plan пока требует userId и не имеет BudgetContext/createdBy; общий service следует расширить, личные ответы сохранить через адаптер. Групповой KWD 0.001 потребует снять общий schema min 0.01 при сохранении личного DTO min. Category RESTRICT сейчас проверяет планы только для user — необходимо распространить на group. При миграции личных планов нужны безопасные owner/author backfill из userId, повторяемость и отсутствие изменений денег/закрытых связей; worker не должен удалять групповые планы автора.
+
+До создания change пользователю предложены решения: полное исполнение новым расходом с фактической суммой и совпадающей валютой; create/read любым участником, mutation автором/owner/manageTransactions, expense author=исполнитель и optional participantId; связанный расход исправляется/удаляется по обычным правам, план остаётся closed без отдельного reopen. Ответы получены и отражены в контракте ниже; production-изменения, миграции и тестовые запуски этапа 08 не выполнялись.
+
+Журнал планирования (2026-10-17): созданы [proposal](../openspec/changes/add-group-budget-plans/proposal.md), [design](../openspec/changes/add-group-budget-plans/design.md), две delta specs (group-budget-plans, budget-ownership) и [tasks](../openspec/changes/add-group-budget-plans/tasks.md), 18 задач. План расширяет существующие Plan/PlansService/ExpensesService/BudgetWrite/actor resolver, включает безопасный backfill с dry-run/explicit apply, category RESTRICT/worker/audit/индексы/seeds. Новые group routes используют close, как личные; group archive detail доступен, includeArchived включает архив в список. Сам план не резервирует и не тратит деньги, расход close учитывается один раз. Сохранены личные DTO/minimum/снимки; group KWD 0.001 проверяется отдельно. Миграция рабочей базы автоматически не запускается.
+
+`openspec validate add-group-budget-plans --strict --no-interactive` — valid, exit code 0; status — 4/4 planning artifacts complete. `git diff --check` — exit code 0. Self-review: scope/решения/DTO/задачи согласованы, deferrable product-вопросов и placeholder нет; все прежние budget-ownership сценарии сохранены. Реализация, unit/e2e/build и миграция этапа 08 не выполнялись. Следующий шаг — apply по отдельной команде; после проверок/ревью первый коммит без co-authored → sync/архив → второй коммит. Этап 09 не создан.
+
+Журнал реализации (2026-10-18): один Plan/PlansService с ownerType/ownerId/createdBy обслуживает личные и групповые маршруты; GroupPlansService — адаптер текущих прав и BudgetWrite. Close использует общий ExpensesService и supplied ClientSession, сохраняя planned amount/expenseId/origin и личный snapshot carry. Group KWD 0.001, строгие DTO, стабильная пагинация/includeArchived и архивные детали проверены HTTP. Общий actor resolver не требует фиктивного type у плана. Category RESTRICT, owner-scoped worker/diagnose и integrity audit сохраняют историю группы; seeds содержат active и closed family Plan с настоящим расходом 1200 при плане 1000.
+
+Совместимость до refactor: plans unit 17/17, plan-debt-lifecycle/multicurrency 10/10 и новый personal characterization 5/5. После refactor: plans unit 25/25 и personal/lifecycle/multicurrency 15/15. Group route RED до подключения: POST plans ожидал 201, получил 404. Конкурентные проверки с explicit barriers — 37/37: close/close, PATCH/archive/delete, счета/категории, отзыв прав/выход/смена владельца/удаление группы в обоих порядках; create/PATCH категории против archive/delete; rollback после expense, Plan update и actor lookup. Узкие group API/seed — 13/13, включая report/revenue/limit после close/PATCH/DELETE расхода и повторное создание индексов до трафика.
+
+Миграция: отдельный maintenance:plan-owners по умолчанию dry-run, только --apply пишет. На disposable replica set проверены сам helper и CLI dry-run/apply/повтор0, неизменность дат/финансовых связей, tombstone, частичные/конфликтные owner-поля, отсутствующие/чужие ссылки и отсутствие изменений групповых Plan. Raw hex-строки вместо BSON ObjectId диагностируются; владельцы не угадываются. При конкурентном назначении отсутствующего owner CAS не должен его переписывать. Рабочая база не мигрировалась, destructive seed/reset не запускался, live API и внешняя публикация не проверялись.
+
+Независимое ревью обнаружило и исправило ложный запрет разных категорий Plan/исправленного expense, принятие строковых BSON-ID и пропуск closed без expenseId; обе категории отдельно проверяются на бюджет, origin/expenseId взаимны. Root дополнительно обнаружил гонку отсутствующих полей CAS; добавлен регрессионный тест сохранения конкурентно назначенного владельца. Все замечания устранены; повторное независимое ревью, включая CAS, не нашло блокирующих проблем. Этап 09 не создан.
+
+Финальная проверка (2026-10-18), все exit code 0:
+
+- `npm run test -- --runInBand` — 57 suites, 352/352 tests passed.
+- `npm run test:e2e -- --runInBand` — 40 suites, 358/358 tests passed, без skipped; disposable replica sets, 194.054 s.
+- `npm run test:e2e -- --runInBand test/plan-owner-backfill.e2e-spec.ts test/group-plans-lifecycle.e2e-spec.ts test/entity-deletion-integrity.e2e-spec.ts` — 3 suites, 22/22 tests после последнего CAS fix; сам backfill содержит 15 тестов.
+- `npm run build` — успешно после последнего изменения helper.
+- Scoped `npx eslint --no-warn-ignored` — 27 изменённых/new TS файлов, 0 ошибок/предупреждений; `npx prettier --check` — 41 изменённый/new TS/Markdown/JSON файл, passed.
+- `git diff --check`; `openspec validate add-group-budget-plans --strict --no-interactive` — passed. Все delta-сценарии сопоставлены с personal compatibility, group HTTP/concurrency/lifecycle/backfill и seed assertions.
+
+18/18 задач выполнены. Документация: group-finances-api/groups-api, shared core/inventory, entity-deletion-api/rollout, seed expectations и этот журнал. Следующий шаг текущего этапа: первый коммит реализации → sync group-budget-plans/budget-ownership → архив → второй коммит. Рабочая БД и развёрнутый API не проверялись/не изменялись.
 
 ## 09. Общие долги
 

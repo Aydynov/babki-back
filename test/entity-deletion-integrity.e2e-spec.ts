@@ -1,5 +1,6 @@
 import { MongooseIntegrityReader } from '../src/database/integrity/mongoose-integrity-reader';
 import { MongooseLifecycleMigrationStore } from '../src/database/integrity/mongoose-lifecycle-migration-store';
+import { integrityRelations } from '../src/database/integrity/integrity-relations';
 import { runIntegrityAudit } from '../src/database/integrity/integrity-audit';
 import { runLifecycleMigration } from '../src/database/integrity/lifecycle-migration';
 import { startGroupsTestApp } from './helpers/groups-test-app';
@@ -31,7 +32,7 @@ describe('Entity deletion rollout integrity (real MongoDB replica set)', () => {
     expect(audit).toMatchObject({
       ok: true,
       violationCount: 0,
-      checkedRelations: 35,
+      checkedRelations: integrityRelations.length,
       violations: [],
     });
   });

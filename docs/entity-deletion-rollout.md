@@ -47,3 +47,24 @@ Stop the rollout and keep new deletion paths disabled when any of these conditio
 - the pre- and post-migration reports cannot be retained for review.
 
 For rollback, first set `USER_DELETION_ENABLED=false` so no new jobs are accepted. Do not stop workers until already accepted jobs reach `completed`; deactivation is immediate and leaving a job unfinished would strand a user in `deletion_pending`. Code rollback does not restore physically deleted empty entities or erased personal data. Archived and soft-deleted records remain compatible with the previous application, but completed user deletion is irreversible.
+
+## Владельцы планов (этап 08)
+
+Перед включением owner-scoped Plan queries остановить записи планов, сделать backup и выполнить отдельную ограниченную команду с прежней runtime конфигурацией и SECRETS_FILE_PATH:
+
+```sh
+npm run maintenance:plan-owners
+# или явно:
+npm run maintenance:plan-owners -- --dry-run
+# только после проверки отчёта:
+npm run maintenance:plan-owners -- --apply
+npm run maintenance:plan-owners -- --dry-run
+```
+
+По умолчанию writes отсутствуют. Отчёт содержит mode/scanned/candidates/updated/issues (planId/reason), но не URI/секреты; issues дают exit 1. После первого apply повтор должен иметь candidates=0/updated=0. Конфликты существующих owner/creator, отсутствующий user/category/expense, другой бюджет и несогласованный origin исправляются после ручного исследования, без назначения по догадке. Уже заданные owner/creator не переписываются; групповые записи не являются кандидатами. Tombstone с сохранённым userId допустим. Строковые hex-ID вместо BSON ObjectId диагностируются без нормализации и без перезаписи; новый API использует BSON-фильтры. Категории плана и расхода могут различаться после обычного исправления расхода, но обе должны принадлежать тому же бюджету. Closed без expenseId диагностируется аудитом. Старые финансовые сущности должны уже иметь собственные owner-пары из прежнего этапа; этот entry point не запускает всю lifecycle migration и не восстанавливает origin самостоятельно.
+
+Raw backfill назначает только отсутствующие ownerType=user/ownerId=userId/createdBy=userId с CAS исходной записи; сохраняет amount/currency/даты, включая createdAt/updatedAt, статус, архив, expenseId и origin. Closed expense проверяется в том же бюджете и с обратным plan origin, включая soft-deleted историю. Достоверность всех ссылок дополнительно проверяется integrity audit. Финансовые суммы/снимки не мигрируются. На рабочей базе команда в этой задаче не выполнялась.
+
+После отсутствия issues включить новый backend: PlansModule ожидает createIndexes до открытия HTTP, без syncIndexes/drop; сохранить личные индексы. Проверить старые личные планы и создание/исполнение группового плана. Изолированные e2e проверяют dry-run без writes, применение, повтор0, частичные/конфликтные поля, tombstone, пропавшие ссылки и неизменность финансовых документов/дат; это свидетельство тестовой базы, не результат production rollout.
+
+Для отката сохранить данные и отключить групповые plan writes. Прежний backend не понимает owner группового Plan в category RESTRICT и worker: откат версии требует отдельной проверки этих путей и личного API. Автоматического удаления owner-полей, purge групповой истории или восстановления удалённых персональных данных нет. Backup нужен для согласованного восстановления после ошибок оператора, а не для повторного исполнения уже закрытых планов.

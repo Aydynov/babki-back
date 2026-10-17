@@ -4,23 +4,23 @@
 
 Все маршруты ниже требуют `Authorization: Bearer <JWT>` и начинаются с настроенного API-префикса (по умолчанию `/api/v1`). Пользователь запроса определяется JWT. Создатель группы становится её владельцем.
 
-| Метод и путь | Тело | Результат |
-| --- | --- | --- |
-| POST `/groups` | `{"name":"Семья","type":"family","description":"Общий бюджет"}` | 201, группа |
-| GET `/groups` | — | 200, собственные группы |
-| GET `/groups/:id` | — | 200, группа |
-| PATCH `/groups/:id` | `{"name":"Новое название"}` | 200, группа; только владелец |
-| DELETE `/groups/:id` | — | 204; только владелец |
-| GET `/groups/:id/members` | — | 200, действующие участники |
-| PATCH `/groups/:id/members/:userId/permissions` | `{"manageTransactions":true}` | 200, полный набор прав; только владелец |
-| POST `/groups/:id/leave` | `{}` | 204; владелец сначала передаёт владение |
-| DELETE `/groups/:id/members/:userId` | — | 204; только владелец, нельзя исключить себя |
-| POST `/groups/:id/ownership` | `{"userId":"идентификатор участника"}` | 200, группа; только владелец |
-| POST `/groups/:id/invitations` | `{}` | 201, `{id,token,expiresAt}`; только владелец |
-| GET `/groups/:id/invitations` | — | 200, метаданные без токенов; только владелец |
-| DELETE `/groups/:id/invitations/:invitationId` | — | 204; только владелец |
-| POST `/group-invitations/preview` | `{"token":"полученный токен"}` | 200, только `{name,type,expiresAt}`, без вступления |
-| POST `/group-invitations/accept` | `{"token":"полученный токен"}` | 200, `{groupId,role:"member"}` |
+| Метод и путь                                    | Тело                                                            | Результат                                           |
+| ----------------------------------------------- | --------------------------------------------------------------- | --------------------------------------------------- |
+| POST `/groups`                                  | `{"name":"Семья","type":"family","description":"Общий бюджет"}` | 201, группа                                         |
+| GET `/groups`                                   | —                                                               | 200, собственные группы                             |
+| GET `/groups/:id`                               | —                                                               | 200, группа                                         |
+| PATCH `/groups/:id`                             | `{"name":"Новое название"}`                                     | 200, группа; только владелец                        |
+| DELETE `/groups/:id`                            | —                                                               | 204; только владелец                                |
+| GET `/groups/:id/members`                       | —                                                               | 200, действующие участники                          |
+| PATCH `/groups/:id/members/:userId/permissions` | `{"manageTransactions":true}`                                   | 200, полный набор прав; только владелец             |
+| POST `/groups/:id/leave`                        | `{}`                                                            | 204; владелец сначала передаёт владение             |
+| DELETE `/groups/:id/members/:userId`            | —                                                               | 204; только владелец, нельзя исключить себя         |
+| POST `/groups/:id/ownership`                    | `{"userId":"идентификатор участника"}`                          | 200, группа; только владелец                        |
+| POST `/groups/:id/invitations`                  | `{}`                                                            | 201, `{id,token,expiresAt}`; только владелец        |
+| GET `/groups/:id/invitations`                   | —                                                               | 200, метаданные без токенов; только владелец        |
+| DELETE `/groups/:id/invitations/:invitationId`  | —                                                               | 204; только владелец                                |
+| POST `/group-invitations/preview`               | `{"token":"полученный токен"}`                                  | 200, только `{name,type,expiresAt}`, без вступления |
+| POST `/group-invitations/accept`                | `{"token":"полученный токен"}`                                  | 200, `{groupId,role:"member"}`                      |
 
 Списки принимают `page` и `limit`, возвращают `{items,total,page,limit}`. Название после trim — 1–100 символов, описание — до 1000. Тип обязателен при создании и неизменяемый; пустая строка очищает описание. Неизвестные поля, null-описание и пустой PATCH отклоняются.
 
@@ -51,13 +51,23 @@
 У обычного участника role — member, ownerId по-прежнему указывает владельца группы. У нового/повторно вступившего участника permissions:
 
 ```json
-{"manageAccounts":false,"manageCategories":false,"manageLimits":false,"manageTransactions":false}
+{
+  "manageAccounts": false,
+  "manageCategories": false,
+  "manageLimits": false,
+  "manageTransactions": false
+}
 ```
 
 Владелец независимо делегирует четыре права: manageAccounts — счета, manageCategories — категории, manageLimits — лимиты, manageTransactions — изменение/удаление любых доходов и расходов и переназначение участника расхода. Непереданные поля PATCH сохраняют прежнее значение. Например, `{"manageTransactions":true}` возвращает при остальных выключенных правах:
 
 ```json
-{"manageAccounts":false,"manageCategories":false,"manageLimits":false,"manageTransactions":true}
+{
+  "manageAccounts": false,
+  "manageCategories": false,
+  "manageLimits": false,
+  "manageTransactions": true
+}
 ```
 
 Делегат не получает управление группой, приглашениями, членством, владением или выдачей прав. Участники могут читать финансовые данные и создавать операции без делегирования. Полная [матрица финансового доступа](group-finances-api.md#права).
@@ -73,7 +83,7 @@ Backend возвращает секрет только при создании �
 Получатель авторизуется либо регистрируется, вызывает `POST /api/v1/group-invitations/preview` с токеном только в JSON body и видит текущие название/тип группы и срок ссылки. Preview требует JWT, но не членство. Пример ответа 200 с `Cache-Control: no-store`:
 
 ```json
-{"name":"Семья","type":"family","expiresAt":"2026-10-24T09:00:00.000Z"}
+{ "name": "Семья", "type": "family", "expiresAt": "2026-10-24T09:00:00.000Z" }
 ```
 
 Это все поля preview: идентификаторов группы/ссылки, имени приглашающего, участников, прав, описания и финансов нет. type принимает family/organization; expiresAt — ISO-дата срока приглашения, а не новый срок. Query, неизвестные поля, отсутствие token, null и неверный формат (ровно 43 символа base64url) дают 400. Без действительного JWT — 401. Неизвестный, истёкший (включая now=expiresAt), использованный, отозванный токен или удалённая группа дают одинаковый 400 `Invalid invitation`, без причины и сведений о группе. Сбой чтения — нормализованный 503.
@@ -120,3 +130,7 @@ openspec validate add-groups-and-membership --strict
 ```
 
 Конкурентные тесты удерживают первую настоящую транзакцию после записи группы, запускают конкурента и затем освобождают первую. Проверяются одноразовость, взаимные гонки принятия/отзыва/удаления и передачи/выхода/исключения, а также откат при ошибке записи события. Транзакции и операции MongoDB не подменяются моками.
+
+## Совместные планы
+
+Групповые планы используют существующий Plan/PlansService: create/read доступны действующим участникам, PATCH/close/archive/delete — действующему автору, владельцу или `manageTransactions`. Удаление группы закрывает все маршруты планов, сохраняя Plan и expense origin. Удаление автора очищает его личные планы, сохраняя групповые с обезличенным createdByActor. Подробный контракт, маршруты и ошибки: [групповые планы](group-finances-api.md#планы-покупок-этап-08). До включения этих маршрутов нужен отдельный owner backfill старых личных Plan, описанный в [rollout](entity-deletion-rollout.md#владельцы-планов-этап-08).

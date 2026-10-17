@@ -42,6 +42,14 @@ describe('referential integrity audit', () => {
     'limit.owner.group',
     'transaction.owner.user',
     'transaction.owner.group',
+    'plan.owner.user',
+    'plan.owner.group',
+    'expense.plan.origin',
+    'expense.plan.category.budget',
+    'plan.createdBy',
+    'plan.category.budget',
+    'plan.expense.budget',
+    'plan.expense.origin',
   ];
 
   it('defines every supported account, category, plan, debt, user and group reference', () => {

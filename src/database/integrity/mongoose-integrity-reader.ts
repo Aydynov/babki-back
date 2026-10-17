@@ -14,21 +14,51 @@ export class MongooseIntegrityReader implements IntegrityReader {
       );
     }
 
+    const conditions: Record<string, unknown>[] = [
+      { $eq: ['$_id', '$$targetId'] },
+    ];
+    if (relation.sameBudget) {
+      conditions.push(
+        { $eq: ['$ownerType', '$$ownerType'] },
+        { $eq: ['$ownerId', '$$ownerId'] },
+      );
+    }
+    if (relation.planOrigin) {
+      conditions.push(
+        { $eq: ['$origin.type', 'plan'] },
+        { $eq: ['$origin.id', '$$planId'] },
+      );
+    }
+    if (relation.expenseOrigin) {
+      conditions.push(
+        { $eq: ['$expenseId', '$$expenseId'] },
+        { $eq: ['$status', 'closed'] },
+      );
+    }
     const targetMatch: Record<string, unknown> = {
-      $expr: { $eq: ['$_id', '$$targetId'] },
+      $expr: conditions.length === 1 ? conditions[0] : { $and: conditions },
       ...(relation.targetFilter ?? {}),
     };
     const pipeline: PipelineStage[] = [
       {
         $match: {
           ...(relation.sourceFilter ?? {}),
-          [relation.sourceField]: { $exists: true, $ne: null },
+          ...(relation.required
+            ? {}
+            : { [relation.sourceField]: { $exists: true, $ne: null } }),
         },
       },
       {
         $lookup: {
           from: target.collection.name,
-          let: { targetId: `$${relation.sourceField}` },
+          let: {
+            targetId: `$${relation.sourceField}`,
+            ...(relation.sameBudget
+              ? { ownerType: '$ownerType', ownerId: '$ownerId' }
+              : {}),
+            ...(relation.planOrigin ? { planId: '$_id' } : {}),
+            ...(relation.expenseOrigin ? { expenseId: '$_id' } : {}),
+          },
           pipeline: [{ $match: targetMatch }],
           as: '__integrityTarget',
         },

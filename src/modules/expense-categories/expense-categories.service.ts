@@ -181,14 +181,12 @@ export class ExpenseCategoriesService {
     const linkedLimit = await this.expenseLimitModel
       .exists(dependencyFilter)
       .session(session);
-    const linkedPlan =
-      budget.ownerType === 'user'
-        ? await this.planModel
-            .exists({
-              categoryId: { $in: [category._id, category._id.toString()] },
-            })
-            .session(session)
-        : null;
+    const linkedPlan = await this.planModel
+      .exists({
+        ...budgetFilter(budget),
+        categoryId: { $in: [category._id, category._id.toString()] },
+      })
+      .session(session);
     if (linkedExpense || linkedLimit || linkedPlan)
       throw new ConflictException(
         budget.ownerType === 'user'

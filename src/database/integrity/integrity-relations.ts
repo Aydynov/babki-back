@@ -5,6 +5,10 @@ export type IntegrityRelation = {
   targetModel: string;
   sourceFilter?: Record<string, unknown>;
   targetFilter?: Record<string, unknown>;
+  required?: boolean;
+  sameBudget?: boolean;
+  planOrigin?: boolean;
+  expenseOrigin?: boolean;
 };
 
 export const integrityRelations: IntegrityRelation[] = [
@@ -95,6 +99,59 @@ export const integrityRelations: IntegrityRelation[] = [
   ...userRelations(),
   ...groupRelations(),
   ...ownerRelations(),
+  {
+    id: 'expense.plan.origin',
+    sourceModel: 'Transaction',
+    sourceField: 'origin.id',
+    sourceFilter: { type: 'expense', 'origin.type': 'plan' },
+    targetModel: 'Plan',
+    sameBudget: true,
+    expenseOrigin: true,
+    required: true,
+  },
+  {
+    id: 'expense.plan.category.budget',
+    sourceModel: 'Transaction',
+    sourceField: 'category',
+    sourceFilter: { type: 'expense', 'origin.type': 'plan' },
+    targetModel: 'ExpenseCategory',
+    sameBudget: true,
+    required: true,
+  },
+  {
+    id: 'plan.createdBy',
+    sourceModel: 'Plan',
+    sourceField: 'createdBy',
+    targetModel: 'User',
+    required: true,
+  },
+  {
+    id: 'plan.category.budget',
+    sourceModel: 'Plan',
+    sourceField: 'categoryId',
+    targetModel: 'ExpenseCategory',
+    sameBudget: true,
+    required: true,
+  },
+  {
+    id: 'plan.expense.budget',
+    sourceModel: 'Plan',
+    sourceField: 'expenseId',
+    targetModel: 'Transaction',
+    targetFilter: { type: 'expense' },
+    sameBudget: true,
+  },
+  {
+    id: 'plan.expense.origin',
+    sourceModel: 'Plan',
+    sourceField: 'expenseId',
+    targetModel: 'Transaction',
+    targetFilter: { type: 'expense' },
+    sameBudget: true,
+    planOrigin: true,
+    sourceFilter: { status: 'closed' },
+    required: true,
+  },
 ];
 
 function userRelations(): IntegrityRelation[] {
@@ -127,32 +184,38 @@ function groupRelations(): IntegrityRelation[] {
 }
 
 function ownerRelations(): IntegrityRelation[] {
-  return ['Account', 'ExpenseCategory', 'ExpenseLimit', 'Transaction'].flatMap(
-    (sourceModel) => {
-      const prefix =
-        sourceModel === 'ExpenseCategory'
-          ? 'category'
-          : sourceModel === 'ExpenseLimit'
-            ? 'limit'
-            : sourceModel.toLowerCase();
-      return [
-        {
-          id: `${prefix}.owner.user`,
-          sourceModel,
-          sourceField: 'ownerId',
-          targetModel: 'User',
-          sourceFilter: { ownerType: 'user' },
-        },
-        {
-          id: `${prefix}.owner.group`,
-          sourceModel,
-          sourceField: 'ownerId',
-          targetModel: 'Group',
-          sourceFilter: { ownerType: 'group' },
-        },
-      ];
-    },
-  );
+  return [
+    'Account',
+    'ExpenseCategory',
+    'ExpenseLimit',
+    'Transaction',
+    'Plan',
+  ].flatMap((sourceModel) => {
+    const prefix =
+      sourceModel === 'ExpenseCategory'
+        ? 'category'
+        : sourceModel === 'ExpenseLimit'
+          ? 'limit'
+          : sourceModel.toLowerCase();
+    return [
+      {
+        id: `${prefix}.owner.user`,
+        sourceModel,
+        sourceField: 'ownerId',
+        targetModel: 'User',
+        sourceFilter: { ownerType: 'user' },
+        ...(sourceModel === 'Plan' ? { required: true } : {}),
+      },
+      {
+        id: `${prefix}.owner.group`,
+        sourceModel,
+        sourceField: 'ownerId',
+        targetModel: 'Group',
+        sourceFilter: { ownerType: 'group' },
+        ...(sourceModel === 'Plan' ? { required: true } : {}),
+      },
+    ];
+  });
 }
 
 function relation(

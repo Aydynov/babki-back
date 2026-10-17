@@ -121,7 +121,7 @@ export class ExpensesService {
           merchant: dto.merchant,
           items: dto.items ?? [],
           currency: account.currency,
-          ...(budget.ownerType === 'user' ? { origin } : {}),
+          ...(origin ? { origin } : {}),
         },
       ],
       { session },

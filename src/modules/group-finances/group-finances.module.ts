@@ -27,8 +27,12 @@ import { GroupSettingsService } from './group-settings.service';
 import { GroupReportsService } from './group-reports.service';
 import { GroupFinancesController } from './group-finances.controller';
 import { GroupFinancialActorsService } from './group-financial-actors.service';
+import { PlansModule } from '../plans/plans.module';
+import { GroupPlansController } from './group-plans.controller';
+import { GroupPlansService } from './group-plans.service';
 @Module({
   imports: [
+    PlansModule,
     ReportsModule,
     AccountsModule,
     AccountsSnapshotsModule,
@@ -43,8 +47,9 @@ import { GroupFinancialActorsService } from './group-financial-actors.service';
       { name: ExpenseLimit.name, schema: ExpenseLimitSchema },
     ]),
   ],
-  controllers: [GroupFinancesController],
+  controllers: [GroupFinancesController, GroupPlansController],
   providers: [
+    GroupPlansService,
     GroupFinancialActorsService,
     GroupTransfersService,
     GroupWalletService,

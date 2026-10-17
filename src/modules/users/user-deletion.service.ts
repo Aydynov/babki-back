@@ -156,7 +156,7 @@ export class UserDeletionWorker {
         }),
         accounts: accounts.length,
         limits: await count('expenselimits', personal),
-        plans: await count('plans', { userId: user }),
+        plans: await count('plans', personal),
         debtTransactions: await count('debttransactions', { userId: user }),
         debts: await count('debts', { userId: user }),
         categories: await count('expensecategories', personal),
@@ -200,7 +200,7 @@ export class UserDeletionWorker {
       });
       await this.connection.collection('accounts').deleteMany(personal);
       await this.connection.collection('expenselimits').deleteMany(personal);
-      await this.connection.collection('plans').deleteMany({ userId });
+      await this.connection.collection('plans').deleteMany(personal);
       await this.connection
         .collection('debttransactions')
         .deleteMany({ userId });

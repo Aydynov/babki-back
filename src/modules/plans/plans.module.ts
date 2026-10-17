@@ -1,5 +1,6 @@
-import { Module } from '@nestjs/common';
-import { MongooseModule } from '@nestjs/mongoose';
+import { Module, OnModuleInit } from '@nestjs/common';
+import { InjectModel, MongooseModule } from '@nestjs/mongoose';
+import { Model } from 'mongoose';
 import {
   ExpenseCategory,
   ExpenseCategorySchema,
@@ -21,5 +22,12 @@ import { PlansService } from './plans.service';
   ],
   controllers: [PlansController],
   providers: [PlansService],
+  exports: [PlansService, MongooseModule],
 })
-export class PlansModule {}
+export class PlansModule implements OnModuleInit {
+  constructor(@InjectModel(Plan.name) private readonly plans: Model<Plan>) {}
+
+  async onModuleInit() {
+    await this.plans.createIndexes();
+  }
+}

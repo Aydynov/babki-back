@@ -45,7 +45,7 @@ first day two months before the anchor month, matching the original family
 account. Alex and Maria can both read the reserve through the account list
 (`?type=saving`) and account details. Stage 05 preserves the original account identifiers and eight income/expense
 transactions, and adds one real transfer through the shared transfer service.
-There are nine transactions and five accounts across the four active groups
+Stage 08 adds one execution expense; there are ten transactions and five accounts across the four active groups
 (plus the retained account and history of the deleted group). The transfer has
 Alex as `createdBy`, no `participantId` or top-level `amount`/`currency`, and
 source/destination effects each containing account and snapshot references,
@@ -58,14 +58,14 @@ For the anchor month, `GET /api/v1/groups/:familyId/reports/months` with explici
 | Field        |   Amount |
 | ------------ | -------: |
 | incomes      |   180000 |
-| expenses     |  27250.5 |
-| balance      | 291749.5 |
+| expenses     |  28450.5 |
+| balance      | 290549.5 |
 | saving       |    51000 |
 | transfersIn  |     1000 |
 | transfersOut |     1000 |
 
-The original `Family` account becomes USD 271749.5; `balance` adds the second
-account's USD 20000 and excludes the reserve. Food expenses remain USD 8450.5,
+The original `Family` account becomes USD 270549.5; `balance` adds the second
+account's USD 20000 and excludes the reserve. Food expenses are USD 9650.5,
 home USD 15600 and leisure USD 3200. Opening amounts and transfers do not count
 as income. Alex and Maria see these same totals. Category filters preserve the
 transfer movements and full account balances. These values describe the seed
@@ -73,3 +73,5 @@ after day 18; a report ending before the transfer retains the earlier balances.
 These additions do not require a migration or a reset of existing databases;
 the destructive seed command above is only for deliberately rebuilding disposable
 local fixtures.
+
+Stage 08 creates two family Plan records through GroupPlansService and shared PlansService: Maria's active home purchase for USD 2000 (target day 10 next month), and Alex's closed food purchase planned for USD 1000, actually USD 1200 on day 12, attributed to Maria. Both spouses read the same plans; only the closed plan has expenseId. The real generated expense retains origin.type=plan and its plan id. Active plans reserve no funds. Food limit total=50000, usage=9650.5 and rest=40349.5. The extra expense reduces Family and aggregate balance by exactly 1200; saving and transfer totals are unchanged. Personal plan fixture amounts/statuses remain unchanged.

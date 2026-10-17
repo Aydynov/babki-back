@@ -39,7 +39,7 @@ describe('PlansService', () => {
   };
   const userModel = { exists: jest.fn() };
   const expenseCategoryModel = { findOneAndUpdate: jest.fn() };
-  const expensesService = { create: jest.fn() };
+  const expensesService = { createForBudget: jest.fn() };
 
   let service: PlansService;
 
@@ -150,6 +150,8 @@ describe('PlansService', () => {
 
       expect(planModel.find).toHaveBeenCalledWith({
         userId: new Types.ObjectId(userId),
+        ownerType: 'user',
+        ownerId: new Types.ObjectId(userId),
         status: 'active',
         archivedAt: null,
       });
@@ -177,6 +179,8 @@ describe('PlansService', () => {
       expect(planModel.findOne).toHaveBeenCalledWith({
         _id: planId,
         userId: new Types.ObjectId(userId),
+        ownerType: 'user',
+        ownerId: new Types.ObjectId(userId),
         archivedAt: null,
       });
       expect(result).toEqual(mockPlan);
@@ -331,7 +335,7 @@ describe('PlansService', () => {
         _id: new Types.ObjectId(expenseId),
         currency: 'RUB',
       };
-      expensesService.create.mockResolvedValue(createdExpense);
+      expensesService.createForBudget.mockResolvedValue(createdExpense);
 
       const closedPlan = {
         ...activePlan,
@@ -343,7 +347,12 @@ describe('PlansService', () => {
 
       const result = await service.close(userId, planId, { accountId });
 
-      expect(expensesService.create).toHaveBeenCalledWith(
+      expect(expensesService.createForBudget).toHaveBeenCalledWith(
+        {
+          ownerType: 'user',
+          ownerId: new Types.ObjectId(userId),
+          userId: new Types.ObjectId(userId),
+        },
         userId,
         {
           accountId,
@@ -359,6 +368,8 @@ describe('PlansService', () => {
         {
           _id: planId,
           userId: new Types.ObjectId(userId),
+          ownerType: 'user',
+          ownerId: new Types.ObjectId(userId),
           status: 'active',
           archivedAt: null,
         },
@@ -379,7 +390,7 @@ describe('PlansService', () => {
         _id: new Types.ObjectId(expenseId),
         currency: 'RUB',
       };
-      expensesService.create.mockResolvedValue(createdExpense);
+      expensesService.createForBudget.mockResolvedValue(createdExpense);
 
       const closedPlan = { ...activePlan, status: 'closed' };
       mockFindOneAndUpdate(closedPlan);
@@ -392,7 +403,12 @@ describe('PlansService', () => {
       };
       await service.close(userId, planId, dto);
 
-      expect(expensesService.create).toHaveBeenCalledWith(
+      expect(expensesService.createForBudget).toHaveBeenCalledWith(
+        {
+          ownerType: 'user',
+          ownerId: new Types.ObjectId(userId),
+          userId: new Types.ObjectId(userId),
+        },
         userId,
         {
           accountId,
@@ -416,7 +432,7 @@ describe('PlansService', () => {
       await expect(
         service.close(userId, planId, { accountId }),
       ).rejects.toBeInstanceOf(BadRequestException);
-      expect(expensesService.create).not.toHaveBeenCalled();
+      expect(expensesService.createForBudget).not.toHaveBeenCalled();
     });
 
     it('throws NotFoundException when plan does not exist', async () => {
@@ -426,7 +442,7 @@ describe('PlansService', () => {
       await expect(
         service.close(userId, planId, { accountId }),
       ).rejects.toBeInstanceOf(NotFoundException);
-      expect(expensesService.create).not.toHaveBeenCalled();
+      expect(expensesService.createForBudget).not.toHaveBeenCalled();
     });
 
     it('throws BadRequestException when plan is closed concurrently during transaction', async () => {
@@ -437,7 +453,7 @@ describe('PlansService', () => {
         _id: new Types.ObjectId(expenseId),
         currency: 'RUB',
       };
-      expensesService.create.mockResolvedValue(createdExpense);
+      expensesService.createForBudget.mockResolvedValue(createdExpense);
 
       // Simulate concurrent close: findOneAndUpdate returns null because status no longer 'active'
       mockFindOneAndUpdate(null);
@@ -445,6 +461,125 @@ describe('PlansService', () => {
       await expect(
         service.close(userId, planId, { accountId }),
       ).rejects.toBeInstanceOf(BadRequestException);
+    });
+  });
+
+  describe('shared budget core', () => {
+    const budget = {
+      ownerType: 'group' as const,
+      ownerId: new Types.ObjectId('507f1f77bcf86cd799439099'),
+    };
+    const dto: CreatePlanDto = {
+      currency: 'KWD',
+      description: 'Small unit',
+      targetDate: '2026-12-01',
+      amount: 0.001,
+      categoryId,
+    };
+
+    it('creates the minimum KWD group unit without personal ownership or starting a nested session', async () => {
+      planModel.create.mockImplementation(async (rows: object[]) => [
+        { toObject: () => rows[0] },
+      ]);
+      const result = await service.createForBudget(
+        budget,
+        userId,
+        dto,
+        mockSession as never,
+      );
+      expect(result).toMatchObject({
+        ...budget,
+        createdBy: new Types.ObjectId(userId),
+        amount: 0.001,
+      });
+      expect(result).not.toHaveProperty('userId');
+      expect(mockConnection.startSession).not.toHaveBeenCalled();
+    });
+
+    it.each([0, -1, 0.0001, Number.NaN, Number.POSITIVE_INFINITY])(
+      'rejects nonpositive or invalid precision amount %s',
+      async (amount) => {
+        await expect(
+          service.createForBudget(
+            budget,
+            userId,
+            { ...dto, amount },
+            mockSession as never,
+          ),
+        ).rejects.toBeInstanceOf(BadRequestException);
+        expect(planModel.create).not.toHaveBeenCalled();
+      },
+    );
+
+    it('scopes archived detail to the group and supplied session', async () => {
+      const archived = {
+        _id: new Types.ObjectId(planId),
+        ...budget,
+        archivedAt: new Date(),
+      };
+      const query = {
+        session: jest.fn(),
+        lean: () => ({ exec: async () => archived }),
+      };
+      planModel.findOne.mockReturnValue(query);
+      await expect(
+        service.getForBudget(budget, planId, mockSession as never),
+      ).resolves.toEqual(archived);
+      expect(planModel.findOne).toHaveBeenCalledWith({
+        _id: planId,
+        ...budget,
+      });
+      expect(query.session).toHaveBeenCalledWith(mockSession);
+    });
+
+    it('forwards executor, participant and origin to exactly one expense in the supplied session', async () => {
+      const plan = {
+        _id: new Types.ObjectId(planId),
+        ...budget,
+        createdBy: new Types.ObjectId(categoryId),
+        categoryId: new Types.ObjectId(categoryId),
+        currency: 'KWD',
+        amount: 0.001,
+        description: 'Small unit',
+        status: 'active',
+      };
+      planModel.findOne.mockReturnValue({
+        lean: () => ({ exec: async () => plan }),
+      });
+      expensesService.createForBudget.mockResolvedValue({
+        _id: new Types.ObjectId(expenseId),
+        currency: 'KWD',
+      });
+      planModel.findOneAndUpdate.mockReturnValue({
+        lean: () => ({
+          exec: async () => ({
+            ...plan,
+            status: 'closed',
+            expenseId: new Types.ObjectId(expenseId),
+          }),
+        }),
+      });
+      const closed = await service.closeForBudget(
+        budget,
+        userId,
+        planId,
+        { accountId, amount: 0.002, participantId: categoryId },
+        mockSession as never,
+      );
+      expect(closed).toMatchObject({
+        amount: 0.001,
+        createdBy: plan.createdBy,
+        status: 'closed',
+      });
+      expect(expensesService.createForBudget).toHaveBeenCalledTimes(1);
+      expect(expensesService.createForBudget).toHaveBeenCalledWith(
+        budget,
+        userId,
+        expect.objectContaining({ amount: 0.002, participantId: categoryId }),
+        mockSession,
+        { type: 'plan', id: new Types.ObjectId(planId) },
+      );
+      expect(mockConnection.startSession).not.toHaveBeenCalled();
     });
   });
 });

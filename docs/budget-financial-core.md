@@ -4,14 +4,14 @@
 
 ## Сохраняемые различия
 
-| Поведение | Личный бюджет | Групповой бюджет |
-| --- | --- | --- |
-| Счета | несколько balance/saving, name/currency, defaultAccountId | несколько balance/saving, явные name/currency; без defaultAccountId |
-| Остаток | сохранённые snapshots + дельта операции | initialAmount + активный ledger до даты |
-| Месячный снимок | существующее начало месяца/сохранённые даты | конец месяца UTC |
-| Деньги | точность валюты, прежнее округление | точность валюты через общие money utilities |
-| Расход | populated category, внутренние поля скрыты | category id, createdBy/participantId |
-| Лимит | currency, populated category, PATCH total | currency, PATCH total/даты, UTC |
+| Поведение       | Личный бюджет                                             | Групповой бюджет                                                    |
+| --------------- | --------------------------------------------------------- | ------------------------------------------------------------------- |
+| Счета           | несколько balance/saving, name/currency, defaultAccountId | несколько balance/saving, явные name/currency; без defaultAccountId |
+| Остаток         | сохранённые snapshots + дельта операции                   | initialAmount + активный ledger до даты                             |
+| Месячный снимок | существующее начало месяца/сохранённые даты               | конец месяца UTC                                                    |
+| Деньги          | точность валюты, прежнее округление                       | точность валюты через общие money utilities                         |
+| Расход          | populated category, внутренние поля скрыты                | category id, createdBy/participantId                                |
+| Лимит           | currency, populated category, PATCH total                 | currency, PATCH total/даты, UTC                                     |
 
 Общий механизм не заменяет личные снимки replay операций: прежний перенос может содержать начальные и исторические корректировки. Групповой amount нельзя брать из последнего месячного снимка: он может включать будущие операции. Схемы и данные сохраняются. HTTP снимков остаётся только для чтения.
 
@@ -40,7 +40,7 @@ ReportsService строит PeriodReport для обоих бюджетов: о�
 
 Characterization: `test/budget-core-compatibility.e2e-spec.ts` и `test/budget-settings-compatibility.e2e-spec.ts`, дополнительно действующие compatibility, boundaries, concurrency, lifecycle, multicurrency, plans/debts и report-history suites. Права и отзыв с прежним JWT проверяются group-financial-management и group-permissions. Финальная проверка — полные unit/e2e на временных replica sets и build.
 
-Этап 03 добавляет групповые валюты к существующим Account/Income/Expense/ExpenseLimit и общий построитель валютных отчётов. Этап 04 подключает несколько счетов, saving и общий rename/archive lifecycle. Этап 05 расширяет общие переводы на группу; планы и долги остаются последующим этапам.
+Этап 03 добавляет групповые валюты к существующим Account/Income/Expense/ExpenseLimit и общий построитель валютных отчётов. Этап 04 подключает несколько счетов, saving и общий rename/archive lifecycle. Этап 05 расширяет общие переводы на группу; планы добавлены этапом 08, долги остаются этапом 09.
 
 ## Переводы этапа 05
 
@@ -52,7 +52,6 @@ TransactionsService использует общий filter builder для обе
 
 Проверки: personal-transfer-compatibility (характеризация до рефакторинга), group-transfers (HTTP), group-transfer-ledger-reports (даты/снимки/отчёты/rollback), group-transfers-concurrency (обе последовательности конкурентных мутаций/прав/архива, RESTRICT). Ошибка второго эффекта create/PATCH/DELETE откатывает запись, оба счёта и цепочки снимков. Реальная база не сбрасывается.
 
-
 В этапе 04 новые GroupAccountsQueryDto/RenameGroupAccountDto и маршруты служат адаптерами общих сервисов. GroupWalletService не рассчитывает balances и не хранит отдельную модель резерва. Архивирование, операции и отзыв полномочий сериализуются существующей group write-транзакцией; read-only история остаётся доступна. Смена имени архивного счёта допустима, финансовые create/PATCH/DELETE заморожены. Новые проверки: group-accounts-savings, group-account-lifecycle, group-savings-reports и расширенный seed e2e; личный календарь и snapshot carry сохранены.
 
 ## Исторические субъекты этапа 07
@@ -62,3 +61,13 @@ GroupFinancialActorsService один для GroupTransactionsService и GroupTra
 Read-декорация происходит после проверок доступа и пагинации; create/PATCH — внутри существующей BudgetWriteService транзакции с той же ClientSession. Ошибка identity lookup в мутации откатывает запись и денежные effects/снимки, включая обе стороны перевода. DELETE сохраняет прежний путь без lookup. Ошибка хранилища не маскируется под отсутствующий профиль.
 
 Текущие имена активного профиля разрешаются и после выхода/исключения из группы. При deletion_pending/deleted или отсутствующем профиле возвращается стабильный userId, null-имена и isAnonymized=true; прежние имена не копируются и не кешируются. Worker удаления сохраняет tombstone и групповые ссылки, а resolver скрывает имена уже с начала pending, пока worker ещё не очистил их. Миграции/индексы не нужны. Этот же resolver предназначен для групповых адаптеров планов/долгов следующих этапов, без дублирования модели пользователя или механизма финансов.
+
+## Общий Plan этапа 08
+
+Одна Plan schema хранит immutable ownerType/ownerId/createdBy; userId остаётся только у личных записей. PlansService предоставляет createForBudget/listForBudget/getForBudget/updateForBudget/removeForBudget/archiveForBudget/closeForBudget. Мутации принимают supplied ClientSession; личные wrappers создают свою транзакцию и используют personalResponse. GroupPlansService проверяет актуальные права через BudgetAccess/GroupsAccess и вызывает общий сервис внутри BudgetWriteService.run. Контроллеры групп не обращаются к личным HTTP-маршрутам.
+
+Общий executeClose создаёт расход через ExpensesService.createForBudget с origin=plan, затем CAS переводит active в closed, сохраняя planned amount и expenseId. Проверка совпадения валюты происходит после создания expense в той же транзакции; несовпадение откатывает все effects. Никакого nested commit или нового ledger. Группа сохраняет отрицательный остаток обычного расхода, личный путь — прежний snapshot carry. Автор расхода — исполнитель, автор плана неизменяем; права расхода независимы.
+
+Групповой detail читает архив, личный detail по-прежнему исключает его; групповой PATCH строгий/непустой, личные nullable/empty/archive quirks сохранены characterization. Личный минимум DTO 0.01 сохранён, общий schema min=0 позволяет групповой положительный minor unit KWD 0.001; shared money validation обеспечивает точность и положительность группы. Group list добавляет _id DESC для стабильной пагинации. Actor resolver принимает Plan без type, participant относится только к expense.
+
+Общий category RESTRICT включает планы обоих бюджетов, в том числе архивные. Worker очищает только ownerType=user/ownerId после backfill; групповые createdBy-ссылки не являются владением. Integrity audit проверяет Plan owner/creator, бюджет category/expense и обратный origin; soft-deleted expense остаётся допустимой историей. PlansModule дожидается createIndexes до HTTP; сохранены личные индексы, добавлены owner-scoped индексы с _id, повторный запуск не удаляет индексы. Backfill выполняется отдельной maintenance-командой, не при старте и не через destructive seeds; порядок описан в entity-deletion-rollout.md.

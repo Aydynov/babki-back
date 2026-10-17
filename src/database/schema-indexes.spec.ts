@@ -122,6 +122,30 @@ describe('query-aligned persistence indexes', () => {
       ],
       [{ categoryId: 1 }, expect.any(Object)],
       [{ expenseId: 1 }, expect.any(Object)],
+      [
+        {
+          ownerType: 1,
+          ownerId: 1,
+          archivedAt: 1,
+          targetDate: 1,
+          createdAt: -1,
+          _id: -1,
+        },
+        expect.any(Object),
+      ],
+      [
+        {
+          ownerType: 1,
+          ownerId: 1,
+          archivedAt: 1,
+          status: 1,
+          currency: 1,
+          targetDate: 1,
+          createdAt: -1,
+          _id: -1,
+        },
+        expect.any(Object),
+      ],
     ]);
   });
 

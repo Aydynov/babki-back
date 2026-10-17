@@ -10,8 +10,31 @@ export type PlanStatus = (typeof planStatuses)[number];
 
 @Schema({ timestamps: true })
 export class Plan {
-  @Prop({ required: true, type: MongooseSchema.Types.ObjectId, ref: User.name })
-  userId: Types.ObjectId;
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: User.name })
+  userId?: Types.ObjectId;
+
+  @Prop({
+    required: true,
+    type: String,
+    enum: ['user', 'group'],
+    immutable: true,
+  })
+  ownerType: 'user' | 'group';
+
+  @Prop({
+    required: true,
+    type: MongooseSchema.Types.ObjectId,
+    immutable: true,
+  })
+  ownerId: Types.ObjectId;
+
+  @Prop({
+    required: true,
+    type: MongooseSchema.Types.ObjectId,
+    ref: User.name,
+    immutable: true,
+  })
+  createdBy: Types.ObjectId;
 
   @Prop({ required: true, trim: true, maxlength: 500 })
   description: string;
@@ -19,7 +42,7 @@ export class Plan {
   @Prop({ required: true })
   targetDate: Date;
 
-  @Prop({ required: true, min: 0.01 })
+  @Prop({ required: true, min: 0 })
   amount: number;
 
   @Prop({ required: true, immutable: true })
@@ -63,3 +86,22 @@ PlanSchema.index({
 });
 PlanSchema.index({ categoryId: 1 });
 PlanSchema.index({ expenseId: 1 });
+
+PlanSchema.index({
+  ownerType: 1,
+  ownerId: 1,
+  archivedAt: 1,
+  targetDate: 1,
+  createdAt: -1,
+  _id: -1,
+});
+PlanSchema.index({
+  ownerType: 1,
+  ownerId: 1,
+  archivedAt: 1,
+  status: 1,
+  currency: 1,
+  targetDate: 1,
+  createdAt: -1,
+  _id: -1,
+});
