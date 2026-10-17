@@ -8,13 +8,40 @@ export type DebtStatus = (typeof debtStatuses)[number];
 
 @Schema({ timestamps: true })
 export class Debt {
-  @Prop({ required: true, type: MongooseSchema.Types.ObjectId, ref: User.name })
-  userId: Types.ObjectId;
+  @Prop({
+    type: MongooseSchema.Types.ObjectId,
+    ref: User.name,
+    immutable: true,
+  })
+  userId?: Types.ObjectId;
+
+  @Prop({
+    required: true,
+    type: String,
+    enum: ['user', 'group'],
+    immutable: true,
+  })
+  ownerType: 'user' | 'group';
+
+  @Prop({
+    required: true,
+    type: MongooseSchema.Types.ObjectId,
+    immutable: true,
+  })
+  ownerId: Types.ObjectId;
+
+  @Prop({
+    required: true,
+    type: MongooseSchema.Types.ObjectId,
+    ref: User.name,
+    immutable: true,
+  })
+  createdBy: Types.ObjectId;
 
   @Prop({ required: true, trim: true })
   debtor: string;
 
-  @Prop({ required: true, min: 0.01 })
+  @Prop({ required: true, min: 0 })
   principalAmount: number;
 
   @Prop({ required: true, min: 0 })
@@ -26,8 +53,8 @@ export class Debt {
   @Prop({ trim: true })
   description?: string;
 
-  @Prop()
-  dueDate?: Date;
+  @Prop({ type: Date })
+  dueDate?: Date | null;
 
   @Prop({ required: true, type: String, enum: debtStatuses, default: 'active' })
   status: DebtStatus;
@@ -45,4 +72,21 @@ DebtSchema.index({
   status: 1,
   currency: 1,
   createdAt: -1,
+});
+
+DebtSchema.index({
+  ownerType: 1,
+  ownerId: 1,
+  archivedAt: 1,
+  createdAt: -1,
+  _id: -1,
+});
+DebtSchema.index({
+  ownerType: 1,
+  ownerId: 1,
+  archivedAt: 1,
+  status: 1,
+  currency: 1,
+  createdAt: -1,
+  _id: -1,
 });

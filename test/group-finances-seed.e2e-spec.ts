@@ -50,7 +50,7 @@ describe('Group finances development seed (real replica set)', () => {
         ownerType: 'group',
         ownerId: { $in: groupIds },
       }),
-    ).toBe(10);
+    ).toBe(12);
 
     for (const collection of ['accounts', 'transactions', 'expenselimits']) {
       expect(
@@ -63,7 +63,100 @@ describe('Group finances development seed (real replica set)', () => {
       ).toBe(0);
     }
 
+    expect(
+      await fixture.connection.collection('transactions').countDocuments({
+        ownerType: 'group',
+        ownerId: { $in: groupIds },
+        deletedAt: null,
+      }),
+    ).toBe(11);
+    expect(
+      await fixture.connection.collection('debttransactions').countDocuments({
+        ownerType: 'group',
+        ownerId: new Types.ObjectId(result.family.id),
+      }),
+    ).toBe(4);
     for (const member of [alex, maria]) {
+      const debtsResponse = await request(
+        fixture.app.getHttpServer() as Parameters<typeof request>[0],
+      )
+        .get(`/api/v1/groups/${result.family.id}/debts`)
+        .auth(member.token, { type: 'bearer' })
+        .expect(200);
+      const debts = debtsResponse.body as {
+        items: {
+          _id: string;
+          principalAmount: number;
+          remainingAmount: number;
+          status: string;
+        }[];
+        total: number;
+      };
+      expect(debts.total).toBe(2);
+      expect(debts.items).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            principalAmount: 4000,
+            remainingAmount: 2500,
+            status: 'active',
+          }),
+          expect.objectContaining({
+            principalAmount: 1000,
+            remainingAmount: 0,
+            status: 'closed',
+          }),
+        ]),
+      );
+      const activeDebt = debts.items.find((debt) => debt.status === 'active')!;
+      const repaymentsResponse = await request(
+        fixture.app.getHttpServer() as Parameters<typeof request>[0],
+      )
+        .get(
+          `/api/v1/groups/${result.family.id}/debts/${activeDebt._id}/repayments`,
+        )
+        .auth(member.token, { type: 'bearer' })
+        .expect(200);
+      const repaymentRows = repaymentsResponse.body as {
+        total: number;
+        items: {
+          amount: number;
+          isIncome: boolean;
+          incomeId?: string;
+          cancelledAt: string | null;
+          cancelledByActor?: { userId: string };
+        }[];
+      };
+      expect(repaymentRows.total).toBe(3);
+      expect(repaymentRows.items).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            amount: 1200,
+            isIncome: true,
+            cancelledAt: null,
+            incomeId: expect.any(String) as string,
+          }),
+          expect.objectContaining({
+            amount: 300,
+            isIncome: false,
+            cancelledAt: null,
+          }),
+          expect.objectContaining({
+            amount: 500,
+            isIncome: true,
+            cancelledAt: expect.any(String) as string,
+            cancelledByActor: expect.objectContaining({
+              userId: alex.id,
+            }) as object,
+          }),
+        ]),
+      );
+      const reversed = repaymentRows.items.find((row) => row.amount === 500)!;
+      await request(
+        fixture.app.getHttpServer() as Parameters<typeof request>[0],
+      )
+        .get(`/api/v1/groups/${result.family.id}/incomes/${reversed.incomeId}`)
+        .auth(member.token, { type: 'bearer' })
+        .expect(404);
       const plans = await request(
         fixture.app.getHttpServer() as Parameters<typeof request>[0],
       )
@@ -149,9 +242,9 @@ describe('Group finances development seed (real replica set)', () => {
       expect(rows[0].currencies).toMatchObject([
         {
           currency: 'USD',
-          incomes: 180000,
+          incomes: 181200,
           expenses: 28450.5,
-          balance: 290549.5,
+          balance: 291749.5,
           saving: 51000,
           transfersIn: 1000,
           transfersOut: 1000,
@@ -218,7 +311,7 @@ describe('Group finances development seed (real replica set)', () => {
       .auth(alex.token, { type: 'bearer' })
       .expect(200)
       .expect(({ body }: { body: { amount: number } }) =>
-        expect(body.amount).toBe(270549.5),
+        expect(body.amount).toBe(271749.5),
       );
 
     const attributedExpense = await fixture.connection

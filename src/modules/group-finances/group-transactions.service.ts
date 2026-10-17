@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ForbiddenException,
+  ConflictException,
   Injectable,
 } from '@nestjs/common';
 import { Types } from 'mongoose';
@@ -128,6 +129,10 @@ export class GroupTransactionsService {
         row.accountId.toString(),
         session,
       );
+      if (kind === 'income' && row.origin?.type === 'debt')
+        throw new ConflictException(
+          'Cancel the debt repayment to change this income',
+        );
       if (!dto)
         return this.transactions.deleteForBudget(
           budget,

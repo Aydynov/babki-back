@@ -102,9 +102,8 @@ export class IncomesService {
           transactionDate: date,
           description: dto.description,
           currency: account.currency,
-          ...(budget.ownerType === 'user'
-            ? { source: dto.source, origin }
-            : {}),
+          ...(budget.ownerType === 'user' ? { source: dto.source } : {}),
+          ...(origin ? { origin } : {}),
         },
       ],
       { session },

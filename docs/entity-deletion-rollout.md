@@ -68,3 +68,25 @@ Raw backfill назначает только отсутствующие ownerTyp
 После отсутствия issues включить новый backend: PlansModule ожидает createIndexes до открытия HTTP, без syncIndexes/drop; сохранить личные индексы. Проверить старые личные планы и создание/исполнение группового плана. Изолированные e2e проверяют dry-run без writes, применение, повтор0, частичные/конфликтные поля, tombstone, пропавшие ссылки и неизменность финансовых документов/дат; это свидетельство тестовой базы, не результат production rollout.
 
 Для отката сохранить данные и отключить групповые plan writes. Прежний backend не понимает owner группового Plan в category RESTRICT и worker: откат версии требует отдельной проверки этих путей и личного API. Автоматического удаления owner-полей, purge групповой истории или восстановления удалённых персональных данных нет. Backup нужен для согласованного восстановления после ошибок оператора, а не для повторного исполнения уже закрытых планов.
+
+## Владельцы долгов (этап 09)
+
+Перед новым owner-scoped backend остановить запись Debt/истории и связанных финансовых ссылок, сделать backup. Используются прежние runtime config/SECRETS_FILE_PATH, новые env/секреты не нужны:
+
+```sh
+npm run maintenance:debt-owners
+npm run maintenance:debt-owners -- --dry-run
+# после разбора отчёта:
+npm run maintenance:debt-owners -- --apply
+npm run maintenance:debt-owners -- --dry-run
+```
+
+Default dry-run не пишет; explicit apply добавляет только отсутствующие ownerType=user/ownerId=userId/createdBy=userId у Debt и затем DebtTransaction. Report: mode/scanned/candidates/updated/issues с collection/documentId/reason, без URI/секретов; issues дают exit1. После успешного применения повтор должен иметь candidates=updated=0. Проверяются BSON ObjectId, существующий User (tombstone допустим), согласованные partial fields и parent/user/budget. Групповые записи пропускаются. Строковые hex IDs, orphan/foreign parent и существующие конфликтные owner не нормализуются/не переписываются.
+
+Raw CAS проверяет исходные поля и отсутствие всех заполняемых полей. Для дочерней записи parent также проверяется в той же транзакции: временная raw marker запись берёт write fence и тут же восстанавливает прежнее поле/отсутствие; лишних parent-полей не коммитится. No-op Mongo update недостаточен для fencing — это проверено реальной гонкой. При изменённом parent повтор транзакции перечитывает его и отклоняет чужую связь. Финансовые суммы, manual personal remaining/status, даты/createdAt/updatedAt/архив и income origins не меняются. Старые isIncome/incomeId не угадываются по описанию/сумме/дате; новый group invariant не применяется к personal history.
+
+После отсутствия issues выполнить read-only integrity audit и включить backend: DebtsService.onModuleInit дожидается createIndexes обеих моделей, не удаляя старые индексы. Проверить старые личные debt/history и group cash/noncash repay/cancel. Unique partial ObjectId incomeId не конфликтует с legacy missing полями. Audit проверяет owner/creator/parent, точный incomeId/origin/amount/currency/date, cancelledBy, согласованность active/cancelled income и remaining/status; корректный soft-deleted cancelled income не orphan. Личная история без incomeId и с ручным remaining допустима.
+
+Helper и реальный CLI dry-run/apply/повтор, owner/parent race, marker restoration, worker и audit проверяются на disposable replica sets; рабочая база в этой задаче не мигрировалась. Plan owner maintenance сохраняет прежнее поведение. Destructive seed/reset не нужен для перехода существующих личных долгов.
+
+Откат: сохранить новые поля/историю и выключить group debt writes. Прежний backend не понимает owner групповых Debt/DT и запрет прямого изменения repayment income; нужен согласованный откат с защитой этих путей, без purge групповых данных или стирания owner. Backup не используется для повторного зачисления уже отменённого income и не восстанавливает персональные данные удалённых пользователей.

@@ -83,6 +83,28 @@ describe('GroupFinancialActorsService', () => {
     expect(find).not.toHaveBeenCalled();
   });
 
+  it('resolves debt cancellation actors in the same deduplicated batch without a fake transaction type', async () => {
+    const rows = [
+      { createdBy: author, cancelledBy: participant },
+      { createdBy: participant, cancelledBy: author },
+    ];
+    const result = await service.enrich(rows);
+    expect(find).toHaveBeenCalledTimes(1);
+    expect(find).toHaveBeenCalledWith({
+      _id: { $in: [author, participant] },
+      status: 'active',
+    });
+    expect(result[0].cancelledByActor).toEqual({
+      userId: participant.toString(),
+      firstName: null,
+      lastName: null,
+      isAnonymized: true,
+    });
+    expect(result[1].cancelledByActor).toEqual(result[0].createdByActor);
+    expect(result[0]).not.toHaveProperty('participantActor');
+    expect(rows[0]).not.toHaveProperty('cancelledByActor');
+  });
+
   it('preserves explicit empty names and normalizes absent names', async () => {
     exec.mockResolvedValue([
       { _id: author, firstName: '', lastName: '' },

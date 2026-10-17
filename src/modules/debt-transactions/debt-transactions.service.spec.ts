@@ -55,10 +55,15 @@ describe('DebtTransactionsService', () => {
 
     expect(debtModel.exists).toHaveBeenCalledWith({
       _id: debtId,
+      ownerType: 'user',
+      ownerId: new Types.ObjectId(userId),
       userId: new Types.ObjectId(userId),
     });
     expect(debtTransactionModel.find).toHaveBeenCalledWith({
       debtId: new Types.ObjectId(debtId),
+      ownerType: 'user',
+      ownerId: new Types.ObjectId(userId),
+      userId: new Types.ObjectId(userId),
     });
     expect(result.total).toBe(1);
   });

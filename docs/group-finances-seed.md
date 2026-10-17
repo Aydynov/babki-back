@@ -57,14 +57,14 @@ For the anchor month, `GET /api/v1/groups/:familyId/reports/months` with explici
 
 | Field        |   Amount |
 | ------------ | -------: |
-| incomes      |   180000 |
+| incomes      |   181200 |
 | expenses     |  28450.5 |
-| balance      | 290549.5 |
+| balance      | 291749.5 |
 | saving       |    51000 |
 | transfersIn  |     1000 |
 | transfersOut |     1000 |
 
-The original `Family` account becomes USD 270549.5; `balance` adds the second
+The original `Family` account becomes USD 271749.5; `balance` adds the second
 account's USD 20000 and excludes the reserve. Food expenses are USD 9650.5,
 home USD 15600 and leisure USD 3200. Opening amounts and transfers do not count
 as income. Alex and Maria see these same totals. Category filters preserve the
@@ -75,3 +75,7 @@ the destructive seed command above is only for deliberately rebuilding disposabl
 local fixtures.
 
 Stage 08 creates two family Plan records through GroupPlansService and shared PlansService: Maria's active home purchase for USD 2000 (target day 10 next month), and Alex's closed food purchase planned for USD 1000, actually USD 1200 on day 12, attributed to Maria. Both spouses read the same plans; only the closed plan has expenseId. The real generated expense retains origin.type=plan and its plan id. Active plans reserve no funds. Food limit total=50000, usage=9650.5 and rest=40349.5. The extra expense reduces Family and aggregate balance by exactly 1200; saving and transfer totals are unchanged. Personal plan fixture amounts/statuses remain unchanged.
+
+Stage 09 adds two family receivables through the shared debt service. Maria creates Artur's USD 4000 debt: Alex receives USD 1200 into Family on day 13, Maria records noncash300 on day14, then records cash500 on day16 which Alex cancels. Remaining is2500; the cancelled record and soft-deleted income remain linked. Alex also creates Irina's USD1000 debt and closes it with noncash1000 on day17. Both spouses see the same two debts and four history records, including cancellation actors.
+
+Only active income1200 changes finances: current Family271749.5, aggregate balance291749.5 and anchor-month incomes181200. Expenses28450.5, saving51000, transfer totals1000/1000 and food limit rest40349.5 are unchanged from stage08. Across the four active groups there are12 raw transactions,11 active (including the original transfer), and one cancelled income excluded from ordinary lists/reports. The stage08-only count was10; group debts create no initial cash movement. The seed test checks both spouses, exact links and these totals. Existing personal debts and plan fixtures retain their meaning. No working database was reset or migrated for these tests.

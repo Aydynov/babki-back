@@ -134,3 +134,7 @@ openspec validate add-groups-and-membership --strict
 ## Совместные планы
 
 Групповые планы используют существующий Plan/PlansService: create/read доступны действующим участникам, PATCH/close/archive/delete — действующему автору, владельцу или `manageTransactions`. Удаление группы закрывает все маршруты планов, сохраняя Plan и expense origin. Удаление автора очищает его личные планы, сохраняя групповые с обезличенным createdByActor. Подробный контракт, маршруты и ошибки: [групповые планы](group-finances-api.md#планы-покупок-этап-08). До включения этих маршрутов нужен отдельный owner backfill старых личных Plan, описанный в [rollout](entity-deletion-rollout.md#владельцы-планов-этап-08).
+
+## Совместные долги
+
+`/groups/:groupId/debts` и вложенные `/repayments` используют общие Debt/DebtTransaction. Только долги перед группой; создание не двигает деньги. Управление и отмена проверяют автора **долга**, owner/manageTransactions, а не автора repayment. Выход/удаление автора сохраняет историю, group deletion закрывает маршруты. Контракт: [долги перед группой](group-finances-api.md#долги-перед-группой-этап-09). Перед включением нужен отдельный [owner backfill долгов](entity-deletion-rollout.md#владельцы-долгов-этап-09); личные маршруты/ручные remaining/status сохраняются.

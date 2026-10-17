@@ -8,11 +8,13 @@ interface ActorTransaction {
   createdBy: Types.ObjectId;
   type?: string;
   participantId?: Types.ObjectId;
+  cancelledBy?: Types.ObjectId;
 }
 
 type WithActors<T> = T & {
   createdByActor: GroupFinancialActor;
   participantActor?: GroupFinancialActor;
+  cancelledByActor?: GroupFinancialActor;
 };
 
 type ActorProfile = {
@@ -35,6 +37,7 @@ export class GroupFinancialActorsService {
     const ids = new Map<string, Types.ObjectId>();
     for (const row of rows) {
       ids.set(row.createdBy.toString(), row.createdBy);
+      if (row.cancelledBy) ids.set(row.cancelledBy.toString(), row.cancelledBy);
       if (row.type === 'expense' && row.participantId)
         ids.set(row.participantId.toString(), row.participantId);
     }
@@ -60,6 +63,9 @@ export class GroupFinancialActorsService {
     return rows.map((row) => ({
       ...row,
       createdByActor: actorFor(row.createdBy),
+      ...(row.cancelledBy
+        ? { cancelledByActor: actorFor(row.cancelledBy) }
+        : {}),
       ...(row.type === 'expense' && row.participantId
         ? { participantActor: actorFor(row.participantId) }
         : {}),

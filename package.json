@@ -25,6 +25,7 @@
     "k8s:deploy": "bash scripts/deploy-k8s-local.sh",
     "k8s:verify": "bash scripts/verify-k8s-local.sh",
     "k8s:local": "bash scripts/k8s-local.sh",
+    "maintenance:debt-owners": "ts-node --transpile-only --project tsconfig.seed.json -r tsconfig-paths/register src/database/backfill-debt-owners.ts",
     "maintenance:plan-owners": "ts-node --transpile-only --project tsconfig.seed.json -r tsconfig-paths/register src/database/backfill-plan-owners.ts"
   },
   "dependencies": {

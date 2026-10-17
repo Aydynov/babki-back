@@ -30,8 +30,14 @@ import { GroupFinancialActorsService } from './group-financial-actors.service';
 import { PlansModule } from '../plans/plans.module';
 import { GroupPlansController } from './group-plans.controller';
 import { GroupPlansService } from './group-plans.service';
+import { DebtsModule } from '../debts/debts.module';
+import { DebtTransactionsModule } from '../debt-transactions/debt-transactions.module';
+import { GroupDebtsController } from './group-debts.controller';
+import { GroupDebtsService } from './group-debts.service';
 @Module({
   imports: [
+    DebtsModule,
+    DebtTransactionsModule,
     PlansModule,
     ReportsModule,
     AccountsModule,
@@ -47,8 +53,13 @@ import { GroupPlansService } from './group-plans.service';
       { name: ExpenseLimit.name, schema: ExpenseLimitSchema },
     ]),
   ],
-  controllers: [GroupFinancesController, GroupPlansController],
+  controllers: [
+    GroupFinancesController,
+    GroupPlansController,
+    GroupDebtsController,
+  ],
   providers: [
+    GroupDebtsService,
     GroupPlansService,
     GroupFinancialActorsService,
     GroupTransfersService,

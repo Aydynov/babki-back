@@ -2,6 +2,7 @@ import { INestApplicationContext } from '@nestjs/common';
 import { getModelToken } from '@nestjs/mongoose';
 import { createHash } from 'node:crypto';
 import { Model } from 'mongoose';
+import { GroupDebtsService } from '../../modules/group-finances/group-debts.service';
 import { GroupPlansService } from '../../modules/group-finances/group-plans.service';
 import { GroupTransfersService } from '../../modules/group-finances/group-transfers.service';
 import { GroupSettingsService } from '../../modules/group-finances/group-settings.service';
@@ -77,6 +78,7 @@ export async function seedGroups(
     transactions,
     app.get(GroupTransfersService),
     app.get(GroupPlansService),
+    app.get(GroupDebtsService),
     family,
     users,
     anchorDate,
@@ -255,6 +257,7 @@ async function seedFamilyFinances(
   transactions: GroupTransactionsService,
   transfers: GroupTransfersService,
   plans: GroupPlansService,
+  debts: GroupDebtsService,
   group: GroupFixture,
   users: SeedUserMap,
   anchorDate: Date,
@@ -350,6 +353,52 @@ async function seedFamilyFinances(
     amount: 1200,
     participantId: users.maria,
     closingDate: getSeedDate(0, 12, anchorDate),
+  });
+  const sharedDebt = await debts.create(group.id, users.maria, {
+    debtor: 'Артур',
+    principalAmount: 4000,
+    currency: 'USD',
+    dueDate: getSeedDate(1, 10, anchorDate),
+    description: 'Семейный долг с историей погашений',
+  });
+  await debts.repay(group.id, users.alex, String(sharedDebt._id), {
+    amount: 1200,
+    isIncome: true,
+    accountId: group.accountId,
+    repaymentDate: getSeedDate(0, 13, anchorDate),
+  });
+  await debts.repay(group.id, users.maria, String(sharedDebt._id), {
+    amount: 300,
+    isIncome: false,
+    repaymentDate: getSeedDate(0, 14, anchorDate),
+  });
+  const reversed = await debts.repay(
+    group.id,
+    users.maria,
+    String(sharedDebt._id),
+    {
+      amount: 500,
+      isIncome: true,
+      accountId: group.accountId,
+      repaymentDate: getSeedDate(0, 16, anchorDate),
+    },
+  );
+  await debts.cancel(
+    group.id,
+    users.alex,
+    String(sharedDebt._id),
+    String(reversed.repayment._id),
+  );
+  const closedDebt = await debts.create(group.id, users.alex, {
+    debtor: 'Ирина',
+    principalAmount: 1000,
+    currency: 'USD',
+    description: 'Семейный долг закрыт без движения денег',
+  });
+  await debts.repay(group.id, users.alex, String(closedDebt._id), {
+    amount: 1000,
+    isIncome: false,
+    repaymentDate: getSeedDate(0, 17, anchorDate),
   });
   await transfers.create(group.id, group.ownerId, {
     sourceAccountId: group.accountId,

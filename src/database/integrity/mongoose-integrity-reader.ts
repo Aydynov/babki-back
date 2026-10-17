@@ -1,11 +1,14 @@
 import { Connection, PipelineStage } from 'mongoose';
 import { IntegrityReader, OrphanReference } from './integrity-audit';
 import { IntegrityRelation } from './integrity-relations';
+import { findDebtViolations } from './group-debt-integrity';
 
 export class MongooseIntegrityReader implements IntegrityReader {
   constructor(private readonly connection: Connection) {}
 
   async findOrphans(relation: IntegrityRelation): Promise<OrphanReference[]> {
+    if (relation.debtCheck)
+      return findDebtViolations(this.connection, relation.debtCheck);
     const source = this.connection.models[relation.sourceModel];
     const target = this.connection.models[relation.targetModel];
     if (!source || !target) {

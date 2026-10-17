@@ -1,7 +1,11 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
-import { PaginatedResponse } from 'src/common/interfaces/paginated-response.interface';
+import { ClientSession, Model, Types } from 'mongoose';
+import { BudgetContext, budgetFilter } from 'src/common/budget/budget-context';
+import {
+  personalBudget,
+  personalResponse,
+} from 'src/common/utils/personal-budget.util';
 import { getPagination } from 'src/common/utils/pagination.util';
 import { Debt, DebtDocument } from '../debts/schemas/debt.schema';
 import { ListDebtTransactionsQueryDto } from './dto/list-debt-transactions-query.dto';
@@ -22,56 +26,77 @@ export class DebtTransactionsService {
     userId: string,
     debtId: string,
     query: ListDebtTransactionsQueryDto,
-  ): Promise<PaginatedResponse<DebtTransaction>> {
-    await this.ensureDebtExists(userId, debtId);
+  ) {
+    return personalResponse(
+      await this.listForBudget(personalBudget(userId), debtId, query),
+    );
+  }
 
+  async listForBudget(
+    budget: BudgetContext,
+    debtId: string,
+    query: ListDebtTransactionsQueryDto,
+  ) {
+    await this.ensureDebtExists(budget, debtId);
     const { page, limit, skip } = getPagination(query);
     const filter = {
       debtId: new Types.ObjectId(debtId),
+      ...budgetFilter(budget),
     };
-
     const [items, total] = await Promise.all([
       this.debtTransactionModel
         .find(filter)
-        .sort({ transactionDate: -1, createdAt: -1 })
+        .sort(
+          budget.ownerType === 'group'
+            ? { transactionDate: -1, createdAt: -1, _id: -1 }
+            : { transactionDate: -1, createdAt: -1 },
+        )
         .skip(skip)
         .limit(limit)
         .lean()
         .exec(),
       this.debtTransactionModel.countDocuments(filter),
     ]);
-
     return { items, total, page, limit };
   }
 
-  async findOne(userId: string, debtId: string, debtTransactionId: string) {
-    await this.ensureDebtExists(userId, debtId);
-
-    const debtTransaction = await this.debtTransactionModel
-      .findOne({
-        _id: debtTransactionId,
-        debtId: new Types.ObjectId(debtId),
-      })
-      .lean()
-      .exec();
-
-    if (!debtTransaction) {
-      throw new NotFoundException(
-        `Debt transaction ${debtTransactionId} for debt ${debtId} not found.`,
-      );
-    }
-
-    return debtTransaction;
+  async findOne(userId: string, debtId: string, repaymentId: string) {
+    return personalResponse(
+      await this.getForBudget(personalBudget(userId), debtId, repaymentId),
+    );
   }
 
-  private async ensureDebtExists(userId: string, debtId: string) {
-    const found = await this.debtModel.exists({
-      _id: debtId,
-      userId: new Types.ObjectId(userId),
+  async getForBudget(
+    budget: BudgetContext,
+    debtId: string,
+    repaymentId: string,
+    session?: ClientSession,
+  ) {
+    await this.ensureDebtExists(budget, debtId, session);
+    const query = this.debtTransactionModel.findOne({
+      _id: repaymentId,
+      debtId: new Types.ObjectId(debtId),
+      ...budgetFilter(budget),
     });
+    if (session) query.session(session);
+    const row = await query.lean().exec();
+    if (!row)
+      throw new NotFoundException(
+        `Debt transaction ${repaymentId} for debt ${debtId} not found.`,
+      );
+    return row;
+  }
 
-    if (!found) {
-      throw new NotFoundException(`Debt ${debtId} is not found.`);
-    }
+  private async ensureDebtExists(
+    budget: BudgetContext,
+    debtId: string,
+    session?: ClientSession,
+  ) {
+    const query = this.debtModel.exists({
+      _id: debtId,
+      ...budgetFilter(budget),
+    });
+    const found = session ? await query.session(session) : await query;
+    if (!found) throw new NotFoundException(`Debt ${debtId} is not found.`);
   }
 }
