@@ -21,6 +21,7 @@ import {
   UpdateGroupExpenseDto,
   UpdateGroupIncomeDto,
 } from './dto/group-finances.dto';
+import { GroupFinancialActorsService } from './group-financial-actors.service';
 
 export type GroupTransactionKind = 'expense' | 'income';
 
@@ -33,6 +34,7 @@ export class GroupTransactionsService {
     private readonly groups: GroupsAccessService,
     private readonly access: BudgetAccessService,
     private readonly write: BudgetWriteService,
+    private readonly actors: GroupFinancialActorsService,
   ) {}
 
   create(
@@ -53,7 +55,7 @@ export class GroupTransactionsService {
         const expense = dto as CreateGroupExpenseDto;
         const participantId = expense.participantId ?? actor;
         await this.groups.requireMember(groupId, participantId, session);
-        return this.expenses.createForBudget(
+        const row = await this.expenses.createForBudget(
           budget,
           actor,
           { ...expense, participantId },
@@ -61,8 +63,9 @@ export class GroupTransactionsService {
           undefined,
           account,
         );
+        return this.actors.enrichOne(row, session);
       }
-      return this.incomes.createForBudget(
+      const row = await this.incomes.createForBudget(
         budget,
         actor,
         dto,
@@ -70,6 +73,7 @@ export class GroupTransactionsService {
         undefined,
         account,
       );
+      return this.actors.enrichOne(row, session);
     });
   }
 
@@ -80,7 +84,12 @@ export class GroupTransactionsService {
     kind: GroupTransactionKind,
   ) {
     await this.access.resolve(actor, groupId);
-    return this.transactions.findOneForBudget(groupBudget(groupId), id, kind);
+    const row = await this.transactions.findOneForBudget(
+      groupBudget(groupId),
+      id,
+      kind,
+    );
+    return this.actors.enrichOne(row);
   }
 
   change(
@@ -151,9 +160,23 @@ export class GroupTransactionsService {
         changes.category = (
           await this.expenses.categoryForBudget(budget, dto.categoryId, session)
         )._id;
-      return kind === 'expense'
-        ? this.expenses.updateForBudget(budget, row, changes, session, account)
-        : this.incomes.updateForBudget(budget, row, changes, session, account);
+      const updated =
+        kind === 'expense'
+          ? await this.expenses.updateForBudget(
+              budget,
+              row,
+              changes,
+              session,
+              account,
+            )
+          : await this.incomes.updateForBudget(
+              budget,
+              row,
+              changes,
+              session,
+              account,
+            );
+      return this.actors.enrichOne(updated, session);
     });
   }
 
@@ -178,11 +201,12 @@ export class GroupTransactionsService {
   ) {
     await this.access.resolve(actor, groupId);
     await this.validateFilters(groupId, query);
-    return this.transactions.findAllForBudget(
+    const result = await this.transactions.findAllForBudget(
       groupBudget(groupId),
       query,
       kind,
     );
+    return { ...result, items: await this.actors.enrich(result.items) };
   }
 
   async revenue(groupId: string, actor: string, query: GroupExpensesQueryDto) {

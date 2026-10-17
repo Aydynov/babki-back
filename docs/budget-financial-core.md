@@ -54,3 +54,11 @@ TransactionsService использует общий filter builder для обе
 
 
 В этапе 04 новые GroupAccountsQueryDto/RenameGroupAccountDto и маршруты служат адаптерами общих сервисов. GroupWalletService не рассчитывает balances и не хранит отдельную модель резерва. Архивирование, операции и отзыв полномочий сериализуются существующей group write-транзакцией; read-only история остаётся доступна. Смена имени архивного счёта допустима, финансовые create/PATCH/DELETE заморожены. Новые проверки: group-accounts-savings, group-account-lifecycle, group-savings-reports и расширенный seed e2e; личный календарь и snapshot carry сохранены.
+
+## Исторические субъекты этапа 07
+
+GroupFinancialActorsService один для GroupTransactionsService и GroupTransfersService: получает уже доступные owner-scoped строки, собирает уникальные createdBy/participantId и выбирает только active User с проекцией _id/firstName/lastName. Один $in на страницу, ноль запросов для пустой выдачи; query-параметр participantId сам по себе не разрешает профиль. Возвращаются новые DTO с createdByActor и expense-only participantActor, raw ссылки не подменяются. Личный финансовый CRUD, авторизация, денежные aggregate и каталог членов не меняются.
+
+Read-декорация происходит после проверок доступа и пагинации; create/PATCH — внутри существующей BudgetWriteService транзакции с той же ClientSession. Ошибка identity lookup в мутации откатывает запись и денежные effects/снимки, включая обе стороны перевода. DELETE сохраняет прежний путь без lookup. Ошибка хранилища не маскируется под отсутствующий профиль.
+
+Текущие имена активного профиля разрешаются и после выхода/исключения из группы. При deletion_pending/deleted или отсутствующем профиле возвращается стабильный userId, null-имена и isAnonymized=true; прежние имена не копируются и не кешируются. Worker удаления сохраняет tombstone и групповые ссылки, а resolver скрывает имена уже с начала pending, пока worker ещё не очистил их. Миграции/индексы не нужны. Этот же resolver предназначен для групповых адаптеров планов/долгов следующих этапов, без дублирования модели пользователя или механизма финансов.

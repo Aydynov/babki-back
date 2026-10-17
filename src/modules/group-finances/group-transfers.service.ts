@@ -13,6 +13,7 @@ import {
   GroupTransfersQueryDto,
   UpdateGroupTransferDto,
 } from './dto/group-transfers.dto';
+import { GroupFinancialActorsService } from './group-financial-actors.service';
 
 @Injectable()
 export class GroupTransfersService {
@@ -21,12 +22,19 @@ export class GroupTransfersService {
     private readonly access: BudgetAccessService,
     private readonly write: BudgetWriteService,
     private readonly groups: GroupsAccessService,
+    private readonly actors: GroupFinancialActorsService,
   ) {}
   create(groupId: string, actorId: string, dto: CreateGroupTransferDto) {
     const budget = groupBudget(groupId);
-    return this.write.run(budget, actorId, (session) =>
-      this.transfers.createForBudget(budget, actorId, dto, session),
-    );
+    return this.write.run(budget, actorId, async (session) => {
+      const row = await this.transfers.createForBudget(
+        budget,
+        actorId,
+        dto,
+        session,
+      );
+      return this.actors.enrichOne(row, session);
+    });
   }
   async list(groupId: string, actorId: string, query: GroupTransfersQueryDto) {
     const budget = await this.access.resolve(actorId, groupId);
@@ -37,13 +45,15 @@ export class GroupTransfersService {
       new Date(query.fromDate) > new Date(query.toDate)
     )
       throw new BadRequestException('Invalid period');
-    return this.transfers.findAllForBudget(budget, query);
+    const result = await this.transfers.findAllForBudget(budget, query);
+    return { ...result, items: await this.actors.enrich(result.items) };
   }
   async get(groupId: string, actorId: string, id: string) {
-    return this.transfers.findOneForBudget(
+    const row = await this.transfers.findOneForBudget(
       await this.access.resolve(actorId, groupId),
       id,
     );
+    return this.actors.enrichOne(row);
   }
   change(
     groupId: string,
@@ -67,9 +77,15 @@ export class GroupTransfersService {
         !permissions.manageTransactions
       )
         throw new ForbiddenException('Transaction mutation not permitted');
-      return dto
-        ? this.transfers.updateForBudget(budget, id, dto, session)
-        : this.transfers.deleteForBudget(budget, actorId, id, session);
+      if (!dto)
+        return this.transfers.deleteForBudget(budget, actorId, id, session);
+      const updated = await this.transfers.updateForBudget(
+        budget,
+        id,
+        dto,
+        session,
+      );
+      return this.actors.enrichOne(updated, session);
     });
   }
 }

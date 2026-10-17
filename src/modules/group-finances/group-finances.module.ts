@@ -26,6 +26,7 @@ import { GroupTransactionsService } from './group-transactions.service';
 import { GroupSettingsService } from './group-settings.service';
 import { GroupReportsService } from './group-reports.service';
 import { GroupFinancesController } from './group-finances.controller';
+import { GroupFinancialActorsService } from './group-financial-actors.service';
 @Module({
   imports: [
     ReportsModule,
@@ -44,6 +45,7 @@ import { GroupFinancesController } from './group-finances.controller';
   ],
   controllers: [GroupFinancesController],
   providers: [
+    GroupFinancialActorsService,
     GroupTransfersService,
     GroupWalletService,
     GroupTransactionsService,
