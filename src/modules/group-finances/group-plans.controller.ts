@@ -1,3 +1,4 @@
+import { GroupFinancialResponseInterceptor } from './group-financial-response.interceptor';
 import {
   Body,
   Controller,
@@ -8,6 +9,7 @@ import {
   Patch,
   Post,
   Query,
+  UseInterceptors,
 } from '@nestjs/common';
 import { ParseObjectIdPipe } from 'src/common/pipes/parse-object-id.pipe';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -21,6 +23,7 @@ import {
 } from './dto/group-plans.dto';
 import { GroupPlansService } from './group-plans.service';
 
+@UseInterceptors(GroupFinancialResponseInterceptor)
 @Controller('groups/:groupId/plans')
 export class GroupPlansController {
   constructor(private readonly plans: GroupPlansService) {}

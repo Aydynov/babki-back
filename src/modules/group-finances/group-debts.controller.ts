@@ -1,3 +1,4 @@
+import { GroupFinancialResponseInterceptor } from './group-financial-response.interceptor';
 import {
   Body,
   Controller,
@@ -8,6 +9,7 @@ import {
   Patch,
   Post,
   Query,
+  UseInterceptors,
 } from '@nestjs/common';
 import { ParseObjectIdPipe } from 'src/common/pipes/parse-object-id.pipe';
 import { PaginationQueryDto } from 'src/common/dto/pagination-query.dto';
@@ -22,6 +24,7 @@ import {
 } from './dto/group-debts.dto';
 import { GroupDebtsService } from './group-debts.service';
 
+@UseInterceptors(GroupFinancialResponseInterceptor)
 @Controller('groups/:groupId/debts')
 export class GroupDebtsController {
   constructor(private readonly debts: GroupDebtsService) {}

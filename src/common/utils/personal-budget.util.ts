@@ -1,4 +1,5 @@
 import { Types } from 'mongoose';
+import { omitResponseFields } from './response-fields.util';
 
 export function personalBudget(userId: string | Types.ObjectId) {
   const id = typeof userId === 'string' ? new Types.ObjectId(userId) : userId;
@@ -19,22 +20,5 @@ const internalFields = new Set([
 
 /** Keep the legacy personal wire format, including populated categories. */
 export function personalResponse<T>(value: T): T {
-  if (
-    value === null ||
-    typeof value !== 'object' ||
-    value instanceof Date ||
-    value instanceof Types.ObjectId
-  )
-    return value;
-  if (Array.isArray(value))
-    return value.map((item: unknown) => personalResponse(item)) as T;
-  const plain =
-    'toObject' in value && typeof value.toObject === 'function'
-      ? (value.toObject as () => Record<string, unknown>)()
-      : value;
-  return Object.fromEntries(
-    Object.entries(plain)
-      .filter(([key]) => !internalFields.has(key))
-      .map(([key, item]) => [key, personalResponse(item)]),
-  ) as T;
+  return omitResponseFields(value, internalFields);
 }

@@ -1,3 +1,4 @@
+import { GroupFinancialResponseInterceptor } from './group-financial-response.interceptor';
 import {
   Body,
   Controller,
@@ -8,6 +9,7 @@ import {
   Patch,
   Post,
   Query,
+  UseInterceptors,
 } from '@nestjs/common';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../auth/interfaces/authenticated-user.interface';
@@ -41,6 +43,7 @@ import {
   GroupReportsQueryDto,
 } from './dto/group-finances.dto';
 
+@UseInterceptors(GroupFinancialResponseInterceptor)
 @Controller('groups/:groupId')
 export class GroupFinancesController {
   constructor(
