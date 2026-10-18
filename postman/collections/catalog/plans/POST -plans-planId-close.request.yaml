@@ -1,0 +1,23 @@
+$kind: http-request
+name: POST /plans/:planId/close
+description: |-
+  Source: src/modules/plans/plans.controller.ts
+  Optional body fields: closingDate, amount, description
+url: "{{base_url}}/plans/{{plan_id}}/close"
+method: POST
+headers:
+  Accept: application/json
+  Content-Type: application/json
+body:
+  type: json
+  content: |-
+    {
+      "accountId": "{{account_id}}"
+    }
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('HTTP 201', () => pm.response.to.have.status(201));
+      pm.test('JSON response', () => pm.response.to.be.json);
+    language: text/javascript
+order: 7000

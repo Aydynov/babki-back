@@ -1,0 +1,23 @@
+$kind: http-request
+name: POST /groups/:groupId/expense-categories
+description: |-
+  Source: src/modules/group-finances/group-finances.controller.ts
+  Optional body fields: description, color
+url: "{{base_url}}/groups/{{group_id}}/expense-categories"
+method: POST
+headers:
+  Accept: application/json
+  Content-Type: application/json
+body:
+  type: json
+  content: |-
+    {
+      "name": "Postman {{run_id}}"
+    }
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('HTTP 201', () => pm.response.to.have.status(201));
+      pm.test('JSON response', () => pm.response.to.be.json);
+    language: text/javascript
+order: 35000

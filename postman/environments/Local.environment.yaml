@@ -1,0 +1,38 @@
+name: Babki Local
+values:
+  - key: base_url
+    value: 'http://localhost:5001/api/v1'
+    type: default
+    enabled: true
+  - key: currency
+    value: RUB
+    type: default
+    enabled: true
+  - key: allow_mutations
+    value: 'false'
+    type: default
+    enabled: true
+  - key: email
+    value: ''
+    type: secret
+    enabled: true
+  - key: password
+    value: ''
+    type: secret
+    enabled: true
+  - key: access_token
+    value: ''
+    type: secret
+    enabled: true
+  - key: challenge_token
+    value: ''
+    type: secret
+    enabled: true
+  - key: second_factor_code
+    value: ''
+    type: secret
+    enabled: true
+  - key: invitation_token
+    value: ''
+    type: secret
+    enabled: true

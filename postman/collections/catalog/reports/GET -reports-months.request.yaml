@@ -1,0 +1,28 @@
+$kind: http-request
+name: GET /reports/months
+description: |
+  Source: src/modules/reports/reports.controller.ts
+url: "{{base_url}}/reports/months"
+method: GET
+headers:
+  Accept: application/json
+queryParams:
+  - key: categories
+    value: ""
+    disabled: true
+    description: Optional; enable when needed
+  - key: fromDate
+    value: "{{now}}"
+    disabled: true
+    description: Optional; enable when needed
+  - key: toDate
+    value: "{{future_date}}"
+    disabled: true
+    description: Optional; enable when needed
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('HTTP 200', () => pm.response.to.have.status(200));
+      pm.test('JSON response', () => pm.response.to.be.json);
+    language: text/javascript
+order: 1000

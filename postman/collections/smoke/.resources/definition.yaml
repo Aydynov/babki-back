@@ -1,0 +1,63 @@
+$kind: collection
+name: Babki Smoke
+description: "Read-only: health, authenticated profile, unauthenticated boundary."
+variables:
+  currency: RUB
+  now: ""
+  future_date: ""
+  from_date: ""
+  to_date: ""
+  run_id: ""
+  challenge_token: ""
+  second_factor_code: ""
+  invitation_token: ""
+  account_id: ""
+  category_id: ""
+  group_account_id: ""
+  group_source_account_id: ""
+  group_destination_account_id: ""
+  group_category_id: ""
+  participant_id: ""
+  group_categories: ""
+  user_id: ""
+  categories: ""
+  snapshot_id: ""
+  source_account_id: ""
+  destination_account_id: ""
+  default_account_id: ""
+  debt_id: ""
+  debt_transaction_id: ""
+  limit_id: ""
+  group_id: ""
+  group_debt_id: ""
+  group_repayment_id: ""
+  group_transfer_id: ""
+  group_expense_id: ""
+  group_income_id: ""
+  group_limit_id: ""
+  group_plan_id: ""
+  group_invitation_id: ""
+  plan_id: ""
+  expense_id: ""
+  income_id: ""
+  transaction_id: ""
+  transfer_id: ""
+scripts:
+  - type: http:beforeRequest
+    code: |-
+      const base = pm.variables.get('base_url');
+      if (!base || !/^https?:\/\//.test(base)) throw new Error('Select an environment and set base_url');
+      if (!pm.variables.get('run_id')) pm.variables.set('run_id', pm.variables.replaceIn('{{$guid}}'));
+      pm.variables.set('now', new Date().toISOString());
+      pm.variables.set('future_date', new Date(Date.now() + 30 * 86400000).toISOString());
+      if (!['GET','HEAD','OPTIONS'].includes(pm.request.method) && pm.variables.get('allow_mutations') !== 'true') {
+        pm.execution.skipRequest();
+        throw new Error('Set allow_mutations=true only for a disposable test target');
+      }
+    language: text/javascript
+auth:
+  - id: 7cbcb050-2af5-46a9-972e-a2425547436a
+    type: bearer
+    name: bearer auth
+    credentials:
+      token: "{{access_token}}"

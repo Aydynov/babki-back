@@ -1,0 +1,34 @@
+$kind: http-request
+name: POST /auth/register
+description: |-
+  Source: src/modules/auth/auth.controller.ts
+  Optional body fields: notes
+url: "{{base_url}}/auth/register"
+method: POST
+headers:
+  Accept: application/json
+  Content-Type: application/json
+body:
+  type: json
+  content: |-
+    {
+      "firstName": "Postman",
+      "lastName": "Tester",
+      "email": "{{email}}",
+      "password": "{{password}}",
+      "currency": "{{currency}}"
+    }
+auth:
+  type: noauth
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('HTTP 201', () => pm.response.to.have.status(201));
+      pm.test('JSON response', () => pm.response.to.be.json);
+      if (pm.response.code === 201) {
+        const body = pm.response.json();
+        if (body.accessToken) pm.variables.set('access_token', body.accessToken);
+        else { pm.variables.unset('access_token'); if (body.challengeToken) pm.variables.set('challenge_token', body.challengeToken); }
+      }
+    language: text/javascript
+order: 1000

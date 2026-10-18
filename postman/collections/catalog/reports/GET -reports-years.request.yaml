@@ -1,0 +1,20 @@
+$kind: http-request
+name: GET /reports/years
+description: |
+  Source: src/modules/reports/reports.controller.ts
+url: "{{base_url}}/reports/years"
+method: GET
+headers:
+  Accept: application/json
+queryParams:
+  - key: categories
+    value: ""
+    disabled: true
+    description: Optional; enable when needed
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('HTTP 200', () => pm.response.to.have.status(200));
+      pm.test('JSON response', () => pm.response.to.be.json);
+    language: text/javascript
+order: 2000

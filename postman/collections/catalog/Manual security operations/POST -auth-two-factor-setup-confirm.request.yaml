@@ -1,0 +1,23 @@
+$kind: http-request
+name: POST /auth/two-factor/setup/confirm
+description: |-
+  Source: src/modules/auth/auth.controller.ts
+  Optional body fields:
+url: "{{base_url}}/auth/two-factor/setup/confirm"
+method: POST
+headers:
+  Accept: application/json
+  Content-Type: application/json
+body:
+  type: json
+  content: |-
+    {
+      "token": "{{second_factor_code}}"
+    }
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('HTTP 201', () => pm.response.to.have.status(201));
+      pm.test('JSON response', () => pm.response.to.be.json);
+    language: text/javascript
+order: 4000

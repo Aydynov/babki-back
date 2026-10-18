@@ -1,0 +1,312 @@
+{
+  "info": {
+    "name": "Babki Smoke",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Read-only: health, authenticated profile, unauthenticated boundary."
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{access_token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "const base = pm.variables.get('base_url');",
+          "if (!base || !/^https?:\\/\\//.test(base)) throw new Error('Select an environment and set base_url');",
+          "if (!pm.variables.get('run_id')) pm.variables.set('run_id', pm.variables.replaceIn('{{$guid}}'));",
+          "pm.variables.set('now', new Date().toISOString());",
+          "pm.variables.set('future_date', new Date(Date.now() + 30 * 86400000).toISOString());",
+          "if (!['GET','HEAD','OPTIONS'].includes(pm.request.method) && pm.variables.get('allow_mutations') !== 'true') {",
+          "  pm.execution.skipRequest();",
+          "  throw new Error('Set allow_mutations=true only for a disposable test target');",
+          "}"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "currency",
+      "value": "RUB"
+    },
+    {
+      "key": "now",
+      "value": ""
+    },
+    {
+      "key": "future_date",
+      "value": ""
+    },
+    {
+      "key": "from_date",
+      "value": ""
+    },
+    {
+      "key": "to_date",
+      "value": ""
+    },
+    {
+      "key": "run_id",
+      "value": ""
+    },
+    {
+      "key": "challenge_token",
+      "value": ""
+    },
+    {
+      "key": "second_factor_code",
+      "value": ""
+    },
+    {
+      "key": "invitation_token",
+      "value": ""
+    },
+    {
+      "key": "account_id",
+      "value": ""
+    },
+    {
+      "key": "category_id",
+      "value": ""
+    },
+    {
+      "key": "group_account_id",
+      "value": ""
+    },
+    {
+      "key": "group_source_account_id",
+      "value": ""
+    },
+    {
+      "key": "group_destination_account_id",
+      "value": ""
+    },
+    {
+      "key": "group_category_id",
+      "value": ""
+    },
+    {
+      "key": "participant_id",
+      "value": ""
+    },
+    {
+      "key": "group_categories",
+      "value": ""
+    },
+    {
+      "key": "user_id",
+      "value": ""
+    },
+    {
+      "key": "categories",
+      "value": ""
+    },
+    {
+      "key": "snapshot_id",
+      "value": ""
+    },
+    {
+      "key": "source_account_id",
+      "value": ""
+    },
+    {
+      "key": "destination_account_id",
+      "value": ""
+    },
+    {
+      "key": "default_account_id",
+      "value": ""
+    },
+    {
+      "key": "debt_id",
+      "value": ""
+    },
+    {
+      "key": "debt_transaction_id",
+      "value": ""
+    },
+    {
+      "key": "limit_id",
+      "value": ""
+    },
+    {
+      "key": "group_id",
+      "value": ""
+    },
+    {
+      "key": "group_debt_id",
+      "value": ""
+    },
+    {
+      "key": "group_repayment_id",
+      "value": ""
+    },
+    {
+      "key": "group_transfer_id",
+      "value": ""
+    },
+    {
+      "key": "group_expense_id",
+      "value": ""
+    },
+    {
+      "key": "group_income_id",
+      "value": ""
+    },
+    {
+      "key": "group_limit_id",
+      "value": ""
+    },
+    {
+      "key": "group_plan_id",
+      "value": ""
+    },
+    {
+      "key": "group_invitation_id",
+      "value": ""
+    },
+    {
+      "key": "plan_id",
+      "value": ""
+    },
+    {
+      "key": "expense_id",
+      "value": ""
+    },
+    {
+      "key": "income_id",
+      "value": ""
+    },
+    {
+      "key": "transaction_id",
+      "value": ""
+    },
+    {
+      "key": "transfer_id",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "GET /",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [],
+          "query": []
+        },
+        "description": "Source: src/app.controller.ts\n",
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+              "pm.test('JSON response', () => pm.response.to.be.json);",
+              "pm.test('Service healthy', () => pm.expect(pm.response.json()).to.deep.equal({status:'ok',service:'babki-api'}));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "GET /users/me",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/users/me",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "users",
+            "me"
+          ],
+          "query": []
+        },
+        "description": "Source: src/modules/users/users.controller.ts\n"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+              "pm.test('JSON response', () => pm.response.to.be.json);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Missing JWT returns 401",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/users/me",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "users",
+            "me"
+          ],
+          "query": []
+        },
+        "description": "Source: src/modules/users/users.controller.ts\n",
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Missing JWT rejected', () => pm.response.to.have.status(401));",
+              "pm.test('Normalized error', () => {const e=pm.response.json(); pm.expect(e.statusCode).to.equal(401); for(const k of ['message','error','path','timestamp']) pm.expect(e).to.have.property(k);});"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

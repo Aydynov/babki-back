@@ -1,0 +1,17 @@
+cloudResources:
+  collections:
+    ../postman/collections/catalog: 53402662-3d179795-7c4e-47f5-8c81-439da1a855a5
+    ../postman/collections/personal-finance: 53402662-bb04b97d-f5bf-4f1b-984a-6f4a2831b870
+    ../postman/collections/smoke: 53402662-d4df7199-8dcd-4877-811b-ad84f5904cd1
+  environments:
+    ../postman/environments/Docker.environment.yaml: 53402662-fe68c2c8-8c99-4a55-9910-9fbb92b63c5d
+    ../postman/environments/Local.environment.yaml: 53402662-fb274d01-b5ab-4acf-a693-aa670156c26c
+    ../postman/environments/Production.environment.yaml: 53402662-220a7222-6217-4153-8355-f5e5e9c0385d
+    ../postman/environments/Staging.environment.yaml: 53402662-5316b98c-e384-48a2-bfc6-b6c615cb8d4a
+  specs:
+    ../postman/specs/babki.openapi.json: 84b50b6f-d04a-47d2-ab01-dc83dc2160d2
+resourceNameMappings:
+  specs:
+    - ../postman/specs/babki.openapi.json: babki.openapi.json
+workspace:
+  id: d0d20e5b-f061-46da-99d2-421f74f9294d

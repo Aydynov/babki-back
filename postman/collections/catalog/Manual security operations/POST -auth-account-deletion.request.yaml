@@ -1,0 +1,23 @@
+$kind: http-request
+name: POST /auth/account-deletion
+description: |-
+  Source: src/modules/auth/auth.controller.ts
+  Optional body fields: secondFactorCode
+url: "{{base_url}}/auth/account-deletion"
+method: POST
+headers:
+  Accept: application/json
+  Content-Type: application/json
+body:
+  type: json
+  content: |-
+    {
+      "password": "{{password}}"
+    }
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('HTTP 202', () => pm.response.to.have.status(202));
+      pm.test('JSON response', () => pm.response.to.be.json);
+    language: text/javascript
+order: 2000

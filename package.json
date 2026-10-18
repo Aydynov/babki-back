@@ -26,7 +26,12 @@
     "k8s:verify": "bash scripts/verify-k8s-local.sh",
     "k8s:local": "bash scripts/k8s-local.sh",
     "maintenance:debt-owners": "ts-node --transpile-only --project tsconfig.seed.json -r tsconfig-paths/register src/database/backfill-debt-owners.ts",
-    "maintenance:plan-owners": "ts-node --transpile-only --project tsconfig.seed.json -r tsconfig-paths/register src/database/backfill-plan-owners.ts"
+    "maintenance:plan-owners": "ts-node --transpile-only --project tsconfig.seed.json -r tsconfig-paths/register src/database/backfill-plan-owners.ts",
+    "postman:lint": "postman workspace lint",
+    "postman:smoke": "postman collection run postman/collections/smoke -e postman/environments/Local.environment.yaml --bail --no-report-events",
+    "postman:finance": "postman collection run postman/collections/personal-finance -e postman/environments/Local.environment.yaml --env-var allow_mutations=true --bail --no-report-events",
+    "postman:diff": "postman workspace diff --push-strategy default",
+    "postman:push": "postman workspace push --push-strategy default"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.1",

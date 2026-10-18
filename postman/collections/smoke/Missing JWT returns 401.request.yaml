@@ -1,0 +1,16 @@
+$kind: http-request
+description: |
+  Source: src/modules/users/users.controller.ts
+url: "{{base_url}}/users/me"
+method: GET
+headers:
+  Accept: application/json
+auth:
+  type: noauth
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('Missing JWT rejected', () => pm.response.to.have.status(401));
+      pm.test('Normalized error', () => {const e=pm.response.json(); pm.expect(e.statusCode).to.equal(401); for(const k of ['message','error','path','timestamp']) pm.expect(e).to.have.property(k);});
+    language: text/javascript
+order: 3000

@@ -1,0 +1,25 @@
+$kind: http-request
+name: POST /groups/:groupId/debts/:id/repayments
+description: |-
+  Source: src/modules/group-finances/group-debts.controller.ts
+  Optional body fields: accountId, description
+url: "{{base_url}}/groups/{{group_id}}/debts/{{group_debt_id}}/repayments"
+method: POST
+headers:
+  Accept: application/json
+  Content-Type: application/json
+body:
+  type: json
+  content: |-
+    {
+      "amount": 100,
+      "repaymentDate": "{{now}}",
+      "isIncome": true
+    }
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('HTTP 201', () => pm.response.to.have.status(201));
+      pm.test('JSON response', () => pm.response.to.be.json);
+    language: text/javascript
+order: 9000

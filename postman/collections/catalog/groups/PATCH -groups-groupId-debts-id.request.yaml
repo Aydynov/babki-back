@@ -1,0 +1,26 @@
+$kind: http-request
+name: PATCH /groups/:groupId/debts/:id
+description: |-
+  Source: src/modules/group-finances/group-debts.controller.ts
+  Optional body fields: debtor, principalAmount, description, dueDate
+url: "{{base_url}}/groups/{{group_id}}/debts/{{group_debt_id}}"
+method: PATCH
+headers:
+  Accept: application/json
+  Content-Type: application/json
+body:
+  type: json
+  content: |-
+    {
+      "debtor": "Postman test",
+      "principalAmount": 100,
+      "description": "Postman test",
+      "dueDate": "{{future_date}}"
+    }
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('HTTP 200', () => pm.response.to.have.status(200));
+      pm.test('JSON response', () => pm.response.to.be.json);
+    language: text/javascript
+order: 4000

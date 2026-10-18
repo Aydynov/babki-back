@@ -1,0 +1,20 @@
+$kind: http-request
+name: POST /groups/:groupId/plans/:id/archive
+description: |-
+  Source: src/modules/group-finances/group-plans.controller.ts
+  Optional body fields:
+url: "{{base_url}}/groups/{{group_id}}/plans/{{group_plan_id}}/archive"
+method: POST
+headers:
+  Accept: application/json
+  Content-Type: application/json
+body:
+  type: json
+  content: "{}"
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('HTTP 204', () => pm.response.to.have.status(204));
+      pm.test('Empty response', () => pm.expect(pm.response.text()).to.equal(''));
+    language: text/javascript
+order: 51000

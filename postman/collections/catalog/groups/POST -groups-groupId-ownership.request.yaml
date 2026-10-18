@@ -1,0 +1,23 @@
+$kind: http-request
+name: POST /groups/:groupId/ownership
+description: |-
+  Source: src/modules/groups/groups.controller.ts
+  Optional body fields:
+url: "{{base_url}}/groups/{{group_id}}/ownership"
+method: POST
+headers:
+  Accept: application/json
+  Content-Type: application/json
+body:
+  type: json
+  content: |-
+    {
+      "userId": "{{user_id}}"
+    }
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('HTTP 200', () => pm.response.to.have.status(200));
+      pm.test('JSON response', () => pm.response.to.be.json);
+    language: text/javascript
+order: 62000

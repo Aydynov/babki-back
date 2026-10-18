@@ -1,0 +1,26 @@
+$kind: http-request
+name: PATCH /expense-categories/:categoryId
+description: |-
+  Source: src/modules/expense-categories/expense-categories.controller.ts
+  Optional body fields: name, description, color, isArchived
+url: "{{base_url}}/expense-categories/{{category_id}}"
+method: PATCH
+headers:
+  Accept: application/json
+  Content-Type: application/json
+body:
+  type: json
+  content: |-
+    {
+      "name": "Postman {{run_id}}",
+      "description": "Postman test",
+      "color": "#1F8A70",
+      "isArchived": false
+    }
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('HTTP 200', () => pm.response.to.have.status(200));
+      pm.test('JSON response', () => pm.response.to.be.json);
+    language: text/javascript
+order: 4000

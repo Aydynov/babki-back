@@ -1,0 +1,24 @@
+$kind: http-request
+name: GET /debts/:debtId/transactions
+description: |
+  Source: src/modules/debt-transactions/debt-transactions.controller.ts
+url: "{{base_url}}/debts/{{debt_id}}/transactions"
+method: GET
+headers:
+  Accept: application/json
+queryParams:
+  - key: page
+    value: "1"
+    disabled: true
+    description: Optional; enable when needed
+  - key: limit
+    value: "20"
+    disabled: true
+    description: Optional; enable when needed
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('HTTP 200', () => pm.response.to.have.status(200));
+      pm.test('JSON response', () => pm.response.to.be.json);
+    language: text/javascript
+order: 1000

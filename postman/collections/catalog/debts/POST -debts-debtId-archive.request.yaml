@@ -1,0 +1,15 @@
+$kind: http-request
+name: POST /debts/:debtId/archive
+description: |
+  Source: src/modules/debts/debts.controller.ts
+url: "{{base_url}}/debts/{{debt_id}}/archive"
+method: POST
+headers:
+  Accept: application/json
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('HTTP 204', () => pm.response.to.have.status(204));
+      pm.test('Empty response', () => pm.expect(pm.response.text()).to.equal(''));
+    language: text/javascript
+order: 9000
