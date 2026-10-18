@@ -7,8 +7,7 @@ import {
 import { InjectModel } from '@nestjs/mongoose';
 import { ClientSession, Model, Types } from 'mongoose';
 import { normalizeCurrency } from 'src/common/money/money';
-import { personalBudget } from 'src/common/utils/personal-budget.util';
-import type { AccountDocument } from '../accounts/schemas/accounts.schema';
+import { AccountsLookupService } from '../accounts/accounts-lookup.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { User, UserDocument } from './schemas/user.schema';
@@ -29,6 +28,7 @@ export type UserAuthenticationState = {
 export class UsersService {
   constructor(
     @InjectModel(User.name) private readonly userModel: Model<UserDocument>,
+    private readonly accountsLookup: AccountsLookupService,
   ) {}
 
   async createWithPassword(createUserDto: CreateUserDto, passwordHash: string) {
@@ -170,22 +170,17 @@ export class UsersService {
           : current.defaultCurrency;
         let defaultAccountId = current.defaultAccountId ?? null;
         const hasExplicitAccount = 'defaultAccountId' in updateUserDto;
-        const accountModel =
-          this.userModel.db.model<AccountDocument>('Account');
 
         if (hasExplicitAccount) {
           defaultAccountId = updateUserDto.defaultAccountId
             ? new Types.ObjectId(updateUserDto.defaultAccountId)
             : null;
           if (defaultAccountId) {
-            const account = await accountModel
-              .findOne({
-                _id: defaultAccountId,
-                ...personalBudget(userId),
-              })
-              .session(session)
-              .lean()
-              .exec();
+            const account = await this.accountsLookup.findPersonalAccount(
+              userId,
+              defaultAccountId.toString(),
+              session,
+            );
             if (!account)
               throw new NotFoundException(
                 `Account ${defaultAccountId.toString()} not found.`,
@@ -204,11 +199,11 @@ export class UsersService {
           updateUserDto.defaultCurrency !== undefined &&
           defaultAccountId
         ) {
-          const account = await accountModel
-            .findOne({ _id: defaultAccountId, ...personalBudget(userId) })
-            .session(session)
-            .lean()
-            .exec();
+          const account = await this.accountsLookup.findPersonalAccount(
+            userId,
+            defaultAccountId.toString(),
+            session,
+          );
           if (!account || account.currency !== defaultCurrency)
             defaultAccountId = null;
         }

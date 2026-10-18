@@ -22,14 +22,12 @@ import type { AuthenticatedUser } from './interfaces/authenticated-user.interfac
 import type { SecurityRequestContext } from './services/security-audit.service';
 import { TwoFactorService } from './services/two-factor.service';
 import { DeleteAccountDto } from './dto/delete-account.dto';
-import { UserDeletionService } from '../users/user-deletion.service';
 
 @Controller('auth')
 export class AuthController {
   constructor(
     private readonly authService: AuthService,
     private readonly twoFactorService: TwoFactorService,
-    private readonly userDeletionService: UserDeletionService,
   ) {}
 
   @Public()
@@ -65,16 +63,11 @@ export class AuthController {
 
   @Post('account-deletion')
   @HttpCode(HttpStatus.ACCEPTED)
-  async requestAccountDeletion(
+  requestAccountDeletion(
     @CurrentUser() currentUser: AuthenticatedUser,
     @Body() dto: DeleteAccountDto,
   ) {
-    await this.twoFactorService.assertDeletionStepUp(
-      currentUser.userId,
-      dto.password,
-      dto.secondFactorCode,
-    );
-    await this.userDeletionService.request(currentUser.userId);
+    return this.authService.requestAccountDeletion(currentUser.userId, dto);
   }
 
   @Post('two-factor/setup')

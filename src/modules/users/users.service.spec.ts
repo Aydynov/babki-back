@@ -18,7 +18,7 @@ describe('UsersService authentication state', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    service = new UsersService(userModel as never);
+    service = new UsersService(userModel as never, {} as never);
   });
 
   it('hides authentication version with a zero default', () => {

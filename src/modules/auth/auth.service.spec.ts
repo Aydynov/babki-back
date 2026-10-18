@@ -2,6 +2,7 @@ import { ConflictException, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { Test } from '@nestjs/testing';
 import * as bcrypt from 'bcrypt';
+import { UserDeletionService } from '../users/user-deletion.service';
 import { UsersService } from '../users/users.service';
 import { AuthService } from './auth.service';
 import {
@@ -42,16 +43,21 @@ describe('AuthService', () => {
   const twoFactorService = {
     getStatus: jest.fn(),
     issueLoginChallenge: jest.fn(),
+    assertDeletionStepUp: jest.fn(),
   };
 
+  const deletion = { request: jest.fn() };
   let service: AuthService;
 
   beforeEach(async () => {
     jest.clearAllMocks();
+    twoFactorService.assertDeletionStepUp.mockReset();
+    deletion.request.mockReset();
 
     const moduleRef = await Test.createTestingModule({
       providers: [
         AuthService,
+        { provide: UserDeletionService, useValue: deletion },
         { provide: UsersService, useValue: usersService },
         { provide: JwtService, useValue: jwtService },
         { provide: AuthThrottleService, useValue: authThrottleService },
@@ -74,6 +80,45 @@ describe('AuthService', () => {
       status: 'disabled',
       recoveryCodesRemaining: 0,
     });
+  });
+
+  it('waits for step-up to finish before requesting deletion', async () => {
+    let confirm!: () => void;
+    twoFactorService.assertDeletionStepUp.mockReturnValue(
+      new Promise<void>((resolve) => {
+        confirm = resolve;
+      }),
+    );
+    const pending = service.requestAccountDeletion(userId, {
+      password: 'password123',
+      secondFactorCode: '012345',
+    });
+    expect(deletion.request).not.toHaveBeenCalled();
+    confirm();
+    await pending;
+    expect(twoFactorService.assertDeletionStepUp).toHaveBeenCalledWith(
+      userId,
+      'password123',
+      '012345',
+    );
+    expect(deletion.request).toHaveBeenCalledWith(userId);
+  });
+
+  it('does not request deletion when step-up is rejected', async () => {
+    const denied = new UnauthorizedException();
+    twoFactorService.assertDeletionStepUp.mockRejectedValue(denied);
+    await expect(
+      service.requestAccountDeletion(userId, { password: 'wrong' }),
+    ).rejects.toBe(denied);
+    expect(deletion.request).not.toHaveBeenCalled();
+  });
+
+  it('preserves deletion conflicts after successful step-up', async () => {
+    const conflict = new ConflictException('Transfer ownership first');
+    deletion.request.mockRejectedValue(conflict);
+    await expect(
+      service.requestAccountDeletion(userId, { password: 'password123' }),
+    ).rejects.toBe(conflict);
   });
 
   it('registers users with a hashed password and returns an access token', async () => {

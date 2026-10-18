@@ -6,6 +6,7 @@ describe('AuthController', () => {
   const authService = {
     register: jest.fn(),
     login: jest.fn(),
+    requestAccountDeletion: jest.fn(),
   };
   const twoFactorService = {
     completeLogin: jest.fn(),
@@ -14,9 +15,7 @@ describe('AuthController', () => {
     confirmSetup: jest.fn(),
     disable: jest.fn(),
     regenerateRecoveryCodes: jest.fn(),
-    assertDeletionStepUp: jest.fn(),
   };
-  const userDeletionService = { request: jest.fn() };
   const request = {
     ip: '203.0.113.10',
     get: jest.fn().mockReturnValue('test-agent'),
@@ -34,7 +33,6 @@ describe('AuthController', () => {
     controller = new AuthController(
       authService as never,
       twoFactorService as never,
-      userDeletionService as never,
     );
   });
 
@@ -68,18 +66,14 @@ describe('AuthController', () => {
     expect(Reflect.getMetadata(IS_PUBLIC_KEY, AuthController)).not.toBe(true);
   });
 
-  it('performs step-up before requesting account deletion', async () => {
+  it('delegates account deletion to the authenticated application service', async () => {
     const dto = { password: 'password123', secondFactorCode: '012345' };
 
     await controller.requestAccountDeletion(currentUser, dto);
 
-    expect(twoFactorService.assertDeletionStepUp).toHaveBeenCalledWith(
+    expect(authService.requestAccountDeletion).toHaveBeenCalledWith(
       currentUser.userId,
-      dto.password,
-      dto.secondFactorCode,
-    );
-    expect(userDeletionService.request).toHaveBeenCalledWith(
-      currentUser.userId,
+      dto,
     );
   });
 

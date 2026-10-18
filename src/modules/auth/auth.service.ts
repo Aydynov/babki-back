@@ -1,6 +1,8 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
+import { UserDeletionService } from '../users/user-deletion.service';
+import { DeleteAccountDto } from './dto/delete-account.dto';
 import { UsersService } from '../users/users.service';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
@@ -20,6 +22,7 @@ export class AuthService {
     private readonly jwtService: JwtService,
     private readonly authThrottleService: AuthThrottleService,
     private readonly twoFactorService: TwoFactorService,
+    private readonly userDeletionService: UserDeletionService,
   ) {}
 
   async register(registerDto: RegisterDto) {
@@ -82,6 +85,15 @@ export class AuthService {
       userId,
       email: user.email,
     });
+  }
+
+  async requestAccountDeletion(userId: string, dto: DeleteAccountDto) {
+    await this.twoFactorService.assertDeletionStepUp(
+      userId,
+      dto.password,
+      dto.secondFactorCode,
+    );
+    await this.userDeletionService.request(userId);
   }
 
   private async buildAuthResponse(
