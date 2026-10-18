@@ -1,6 +1,6 @@
 # Группы и приглашения
 
-Группа (`family` или `organization`) объединяет пользователей, каждый из которых может участвовать в нескольких группах. Доступны членство, приглашения и [групповые финансы](group-finances-api.md): кошелёк, доходы, расходы, категории, лимиты и отчёты. Личные финансовые API остаются независимыми.
+Группа (`family` или `organization`) объединяет пользователей, каждый из которых может участвовать в нескольких группах. Доступны членство, приглашения и [групповые финансы](group-finances-api.md): счета и накопления, доходы, расходы, переводы, категории, лимиты, планы, долги и отчёты. Личные финансовые API остаются независимыми.
 
 Все маршруты ниже требуют `Authorization: Bearer <JWT>` и начинаются с настроенного API-префикса (по умолчанию `/api/v1`). Пользователь запроса определяется JWT. Создатель группы становится её владельцем.
 
@@ -126,7 +126,7 @@ npm run test:e2e -- --runInBand test/groups.e2e-spec.ts test/groups-concurrency.
 npm run test -- --runInBand
 npm run test:e2e -- --runInBand
 npm run build
-openspec validate add-groups-and-membership --strict
+openspec validate --specs --no-interactive
 ```
 
 Конкурентные тесты удерживают первую настоящую транзакцию после записи группы, запускают конкурента и затем освобождают первую. Проверяются одноразовость, взаимные гонки принятия/отзыва/удаления и передачи/выхода/исключения, а также откат при ошибке записи события. Транзакции и операции MongoDB не подменяются моками.
@@ -138,3 +138,9 @@ openspec validate add-groups-and-membership --strict
 ## Совместные долги
 
 `/groups/:groupId/debts` и вложенные `/repayments` используют общие Debt/DebtTransaction. Только долги перед группой; создание не двигает деньги. Управление и отмена проверяют автора **долга**, owner/manageTransactions, а не автора repayment. Выход/удаление автора сохраняет историю, group deletion закрывает маршруты. Контракт: [долги перед группой](group-finances-api.md#долги-перед-группой-этап-09). Перед включением нужен отдельный [owner backfill долгов](entity-deletion-rollout.md#владельцы-долгов-этап-09); личные маршруты/ручные remaining/status сохраняются.
+
+## Формы списков и интеграционный маршрут
+
+Группы и приглашения используют `id`, финансовые документы — `_id`; это намеренно сохранённый контракт. Списки `/groups`, `/groups/:id/members`, `/groups/:id/invitations` имеют `{items,total,page,limit}`, defaults page1/limit20, limit≤100. Группы и приглашения сортируются createdAt ASC/_id ASC, участники — joinedAt ASC/_id ASC. Группа имеет optional description (может отсутствовать); остальные публичные поля приведены в примере выше. Member: `{userId,firstName?,lastName?,role,joinedAt,permissions}`. Invitation list item: `{id,createdBy,createdAt,expiresAt,status}`, optional acceptedBy/acceptedAt после принятия и revokedBy/revokedAt после отзыва, без token/digest; status pending/accepted/revoked/expired. Создание приглашения возвращает только `{id,token,expiresAt}`, preview — только `{name,type,expiresAt}`, accept — только `{groupId,role}`. Финансовые списки имеют собственные формы, описанные в [справочнике](group-finances-api.md#справочник-форм-ответов-и-параметров).
+
+Полный семейный маршрут и матрица §1–10 — [финальная сверка](family-budget-contract-audit.md). В нём пользователи с личными USD/EUR видят одинаковую семью RUB/USD, отдельно от личных счетов и второй группы; проверены создание/исполнение планов, погашение/отмена долгов и история после выхода/удаления. Эти локальные HTTP-тесты не являются проверкой browser frontend или уже развёрнутого API. Актуальные команды: `npm run test:e2e -- --runInBand test/family-budget-contract.e2e-spec.ts` и `openspec validate --specs --no-interactive`; исходный change групп уже архивирован.

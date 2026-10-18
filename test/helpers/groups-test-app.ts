@@ -11,7 +11,7 @@ import { HttpExceptionFilter } from '../../src/common/filters/http-exception.fil
 import { RequestLoggingInterceptor } from '../../src/common/interceptors/request-logging.interceptor';
 import { startTestReplicaSet } from './mongo-replica';
 
-export async function startGroupsTestApp() {
+export async function startGroupsTestApp(currencies: readonly string[] = []) {
   const replica = await startTestReplicaSet();
   const secretsPath = `.temp/groups-test-${process.pid}-${randomBytes(4).toString('hex')}.json`;
   const previousEnv = { ...process.env };
@@ -74,7 +74,7 @@ export async function startGroupsTestApp() {
           lastName: 'Test',
           email: `${firstName.toLowerCase()}@groups.example`,
           password: 'test-only-correct-horse-battery',
-          currency: 'USD',
+          currency: currencies[users.length] ?? 'USD',
         })
         .expect(201);
       const body = response.body as {

@@ -11,7 +11,7 @@ All users have password `Test1234!`:
 | Email                | Main scenarios                                                                                     |
 | -------------------- | -------------------------------------------------------------------------------------------------- |
 | `test@test.com`      | Personal budget, family owner, member of two organizations, empty budget owner                     |
-| `maria@test.com`     | Family member with all three delegated settings permissions                                        |
+| `maria@test.com`     | Family member with all three delegated settings permissions; manageTransactions=false              |
 | `ivan@test.com`      | Family member with `manageLimits`, owner of North Studio                                           |
 | `elena@test.com`     | Former family member with historical expense, owner of South Agency                                |
 | `delete-me@test.com` | No group ownership; one deletable account and one archived account for account/user deletion tests |
@@ -79,3 +79,7 @@ Stage 08 creates two family Plan records through GroupPlansService and shared Pl
 Stage 09 adds two family receivables through the shared debt service. Maria creates Artur's USD 4000 debt: Alex receives USD 1200 into Family on day 13, Maria records noncash300 on day14, then records cash500 on day16 which Alex cancels. Remaining is2500; the cancelled record and soft-deleted income remain linked. Alex also creates Irina's USD1000 debt and closes it with noncash1000 on day17. Both spouses see the same two debts and four history records, including cancellation actors.
 
 Only active income1200 changes finances: current Family271749.5, aggregate balance291749.5 and anchor-month incomes181200. Expenses28450.5, saving51000, transfer totals1000/1000 and food limit rest40349.5 are unchanged from stage08. Across the four active groups there are12 raw transactions,11 active (including the original transfer), and one cancelled income excluded from ordinary lists/reports. The stage08-only count was10; group debts create no initial cash movement. The seed test checks both spouses, exact links and these totals. Existing personal debts and plan fixtures retain their meaning. No working database was reset or migrated for these tests.
+
+## Final audit evidence
+
+The deterministic seed test uses anchor `2024-03-21T12:00:00.000Z` and asserts the totals above for both spouses, exact plan/repayment links, and 12 raw/11 active transactions. Run `npm run test:e2e -- --runInBand test/group-finances-seed.e2e-spec.ts` to verify fixtures on a temporary database; this does not run the destructive seed against your configured database. The separate `family-budget-contract.e2e-spec.ts` covers different personal USD/EUR settings and two independent groups without changing these development fixtures. See the [final audit](family-budget-contract-audit.md).

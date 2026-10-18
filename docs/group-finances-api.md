@@ -252,3 +252,71 @@ POST repayment требует amount, repaymentDate и **явный boolean isIn
 ## Публичная сериализация финансов
 
 Во всех финансовых HTTP-ответах группы служебные `mutationVersion`, `lockVersion` и `__v` исключены рекурсивно: create/PATCH/detail/list, страницы, account timeline, compound `{debt,repayment}`. Это изменение ответа: клиент не должен требовать эти поля. Сами счётчики остаются в БД и продолжают обеспечивать сериализацию мутаций. `_id`, ownerType/ownerId, createdBy/participantId, snapshotId, origin, actors, даты и денежные значения сохраняются. Личный API сохраняет прежний wire format, в том числе существующий `__v`.
+
+## Справочник форм ответов и параметров
+
+Обозначения ниже: ID — строка ObjectId, date — ISO string в ответе JSON, `?` — поле может отсутствовать, `T|null` — поле присутствует со значением или null. `optional` во входном DTO не разрешает null автоматически. Поля владельца/автора назначает сервер; передача внутренних полей клиентом отклоняется. Числовые денежные поля используют точность валюты; отрицательные amount в ответе счёта допустимы. Архивное поле не заменяет status плана/долга.
+
+| Объект ответа       | Публичные поля и отсутствие/null                                                                                                                                                                                                                                                                                                                                                      |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Account             | `_id, ownerType:"group", ownerId, name, type:"balance"\|"saving", currency, initialAmount, openedAt, archivedAt:date\|null, createdAt, updatedAt, amount`; `timeline:[Snapshot]` присутствует на POST/PATCH/GET; POST возвращает [], заполненный timeline сортируется date DESC                                                                                                       |
+| Snapshot в timeline | `_id, accountId, amount, date, createdAt, updatedAt`; owner определяется родительским счётом                                                                                                                                                                                                                                                                                          |
+| Income              | `_id, ownerType, ownerId, createdBy, createdByActor, type:"income", accountId, snapshotId, amount, currency, transactionDate, origin:Origin\|null, createdAt, updatedAt`; `description?`; participant отсутствует                                                                                                                                                                     |
+| Expense             | поля операции с `type:"expense"`, `category:ID` (на входе categoryId), `participantId/participantActor` для нового расхода, `items` (по умолчанию `[]`); `description?`, `merchant?`; исторический расход без participantId не получает participantActor                                                                                                                              |
+| Transfer            | `_id, ownerType, ownerId, createdBy, createdByActor, type:"transfer", transactionDate, source, destination, effectiveRate, origin:null, createdAt, updatedAt`, `description?`; нет верхних amount/currency/participantId; source/destination = `{accountId,snapshotId,amount,currency}`, effectiveRate = `{baseCurrency,quoteCurrency,rate}`                                          |
+| Category            | `_id, ownerType, ownerId, name, isArchived:boolean, createdAt, updatedAt`; `description?`, `color?`; валюта категории не задаётся                                                                                                                                                                                                                                                     |
+| Limit               | `_id, ownerType, ownerId, category:ID, currency, total, startDate, endDate, rest, createdAt, updatedAt`; rest считается по расходам этой категории/валюты                                                                                                                                                                                                                             |
+| Plan                | `_id, ownerType, ownerId, createdBy, createdByActor, description, targetDate, amount, currency, categoryId:ID, status:"active"\|"closed", archivedAt:date\|null, createdAt, updatedAt`; `closedAt?`, `expenseId?` после исполнения                                                                                                                                                    |
+| Debt                | `_id, ownerType, ownerId, createdBy, createdByActor, debtor, principalAmount, remainingAmount, currency, status:"active"\|"closed", archivedAt:date\|null, createdAt, updatedAt`; `description?`, `dueDate?:date\|null` (null после явной очистки)                                                                                                                                    |
+| Repayment           | `_id, ownerType, ownerId, createdBy, createdByActor, debtId, amount, transactionDate, isIncome:boolean, cancelledAt:date\|null, createdAt, updatedAt, description` (default при отсутствии во входе, пустая строка допустима); `incomeId?` только для financial; `cancelledBy?/cancelledByActor?` после отмены; отдельного type, participantId и currency нет, валюта — Debt.currency |
+
+Origin — `{type:"plan"|"debt",id:ID}`, у обычной новой операции — null. Объект Actor имеет **ровно** `{userId,firstName:string|null,lastName:string|null,isAnonymized:boolean}`. Групповые финансовые DTO не используют личный userId; actor.userId обозначает человека, а ownerId — бюджет. Политика исключения служебных полей описана выше. Мягко удалённые операции не возвращаются в обычных списках; история погашений сохраняет отменённые записи.
+
+| GET список                          | Параметры и форма                                                                                       | Порядок                                                       |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
+| `/accounts`                         | optional `type,currency`; массив Account, без pagination, архивные включены                             | для группы стабильный порядок не гарантирован                 |
+| `/expense-categories`               | без query; массив Category, включая архивные                                                            | createdAt DESC; порядок одинаковых timestamps не гарантирован |
+| `/expense-limits`                   | optional `categoryId,currency,periodDate`; массив Limit                                                 | startDate DESC, tie-break не гарантирован                     |
+| `/transactions`, `/incomes`         | `page,limit,accountId,fromDate,toDate,transactionType,currency`; `{items,total,page,limit}`             | transactionDate DESC, _id DESC                                |
+| `/expenses`                         | те же параметры плюс `categoryId,participantId`; страница                                               | transactionDate DESC, _id DESC                                |
+| `/transfers`                        | `page,limit,accountId,fromDate,toDate,currency`; страница                                               | transactionDate DESC, _id DESC                                |
+| `/plans`                            | `page,limit,status,currency,includeArchived`; страница                                                  | targetDate ASC, createdAt DESC, _id DESC                      |
+| `/debts`                            | `page,limit,status,currency,includeArchived`; страница                                                  | createdAt DESC, _id DESC                                      |
+| `/debts/:id/repayments`             | `page,limit`; страница, включая cancelled                                                               | transactionDate DESC, createdAt DESC, _id DESC                |
+| `/expenses/revenue`                 | фильтры расходов; `{totalRevenue:number\|null,currencies:[{currency,totalRevenue}],fromDate?,toDate?}`  | currencies ASC                                                |
+| `/reports/months`, `/reports/years` | `fromDate,toDate,categories` (comma-separated IDs); массив `{period,currencies:[CurrencyPeriodReport]}` | периоды ASC, currencies ASC                                   |
+
+Pagination: page по умолчанию1, limit20, page≥1, limit1…100; total — полное количество подходящих записей, пустая страница имеет items=[] без исчезновения metadata. У разных маршрутов форма списка различается: нельзя оборачивать массив счетов/категорий/лимитов или отчётов в выдуманный page DTO. includeArchived принимает строки `true`/`false`, отсутствие эквивалентно false; значения `1`, `yes`, пустая строка отклоняются. Detail plans/debts читает архив независимо от фильтра списка. Валютные фильтры trim/uppercase; id-параметры валидируются как ObjectId.
+
+Пример минимального запроса создания долга и последующего финансового погашения (ID — значения своей группы):
+
+```json
+{ "debtor": "Заёмщик", "principalAmount": 200, "currency": "RUB" }
+```
+
+```json
+{
+  "amount": 60,
+  "repaymentDate": "2024-01-06T12:00:00Z",
+  "isIncome": true,
+  "accountId": "670000000000000000000010"
+}
+```
+
+Первый запрос возвращает 201 Debt с remainingAmount=200/status=active; второй — 201 `{debt,repayment}` с remainingAmount=140, repayment.isIncome=true и точным incomeId. Для noncash передают isIncome=false **без** accountId; incomeId отсутствует. Cancel без body/query возвращает тот же compound shape с cancelledAt/By/Actor и восстановленным остатком; повтор409. `PATCH /debts/:id {"dueDate":null}` очищает срок, а `{"description":""}` очищает описание; это не универсальная политика null для остальных DTO.
+
+Методы CRUD: для income/expense/category/limit — POST коллекции201, GET списка/деталей200, PATCH деталей200, DELETE деталей204. Account дополнительно имеет POST `/:id/archive`204 и PATCH только name; Plan — POST close201 и archive204; Debt — repayments201/cancel200/archive204; Transfer — POST201, GET/PATCH200, DELETE204. Для ошибок состояния/прав используйте предметные разделы: статус DELETE204 не означает, что сущность с историей удаляема. Архив категории задаётся PATCH isArchived, а не отдельным маршрутом.
+
+Все ошибки нормализует общий filter. Пример неизвестного currency во входе income (400):
+
+```json
+{
+  "statusCode": 400,
+  "message": ["property currency should not exist"],
+  "error": "Bad Request",
+  "path": "/api/v1/groups/670000000000000000000001/incomes",
+  "timestamp": "2026-10-18T08:00:00.000Z"
+}
+```
+
+Поля error/path/timestamp присутствуют и при 401/403/404/409/503; message бывает string или string[]. Не определяйте поведение по одному error: при отсутствии JWT он равен `"Error"`, при обычном ForbiddenException — `"Forbidden"`. Основной машинный признак — statusCode/HTTP status. Приглашения имеют отдельное редактирование сообщений/path, no-store и квоту429 с Retry-After, как описано в groups-api. Нормализованный 503 финансового сервисного сбоя не заменяет ошибки валидации400 или конфликты409. Проверки: family-budget-contract (400/401/403), group-financial-response (все формы), предметные suites для 404/409/503 и rollback; [матрица доказательств](family-budget-contract-audit.md).
