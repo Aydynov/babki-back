@@ -5,10 +5,9 @@ import {
   UserDeletionJob,
   UserDeletionJobSchema,
 } from './schemas/user-deletion-job.schema';
-import { AccountsLookupModule } from '../accounts/accounts-lookup.module';
 import { UsersController } from './users.controller';
 import { UsersService } from './users.service';
-import { Group, GroupSchema } from '../groups/schemas/group.schema';
+import { Space, SpaceSchema } from '../spaces/schemas/space.schema';
 import {
   UserDeletionService,
   UserDeletionWorker,
@@ -16,11 +15,10 @@ import {
 
 @Module({
   imports: [
-    AccountsLookupModule,
     MongooseModule.forFeature([
       { name: User.name, schema: UserSchema },
       { name: UserDeletionJob.name, schema: UserDeletionJobSchema },
-      { name: Group.name, schema: GroupSchema },
+      { name: Space.name, schema: SpaceSchema },
     ]),
   ],
   controllers: [UsersController],

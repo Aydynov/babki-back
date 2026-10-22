@@ -1,13 +1,11 @@
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { Debt, DebtSchema } from '../debts/schemas/debt.schema';
-import { DebtTransactionsController } from './debt-transactions.controller';
 import { DebtTransactionsService } from './debt-transactions.service';
 import {
   DebtTransaction,
   DebtTransactionSchema,
 } from './schemas/debt-transaction.schema';
-
 @Module({
   imports: [
     MongooseModule.forFeature([
@@ -15,7 +13,7 @@ import {
       { name: Debt.name, schema: DebtSchema },
     ]),
   ],
-  controllers: [DebtTransactionsController],
+  controllers: [],
   providers: [DebtTransactionsService],
   exports: [DebtTransactionsService, MongooseModule],
 })

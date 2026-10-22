@@ -4,28 +4,24 @@ import { ClientSession, Model } from 'mongoose';
 import {
   BudgetContext,
   budgetFilter,
-  groupBudget,
+  spaceBudget,
 } from 'src/common/budget/budget-context';
-import { personalBudget } from 'src/common/utils/personal-budget.util';
 import { Account } from '../accounts/schemas/accounts.schema';
-import { GroupsAccessService } from '../groups/groups-access.service';
-
+import { SpacesAccessService } from '../spaces/spaces-access.service';
 @Injectable()
 export class BudgetAccessService {
   constructor(
-    @InjectModel(Account.name) private readonly accounts: Model<Account>,
-    private readonly groups: GroupsAccessService,
+    @InjectModel(Account.name)
+    private readonly accounts: Model<Account>,
+    private readonly spaces: SpacesAccessService,
   ) {}
   async resolve(
     actorId: string,
-    groupId?: string,
+    spaceId: string,
     session?: ClientSession,
   ): Promise<BudgetContext> {
-    if (groupId) {
-      await this.groups.requireMember(groupId, actorId, session);
-      return groupBudget(groupId);
-    }
-    return personalBudget(actorId);
+    await this.spaces.requireMember(spaceId, actorId, session);
+    return spaceBudget(spaceId);
   }
   async account(budget: BudgetContext, id: string, session?: ClientSession) {
     const account = await this.accounts

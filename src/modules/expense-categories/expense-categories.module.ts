@@ -1,22 +1,20 @@
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import {
-  Transaction,
-  TransactionSchema,
-} from '../transactions/schemas/transaction.schema';
-import {
   ExpenseLimit,
   ExpenseLimitSchema,
 } from '../expense-limits/schemas/expense-limit.schema';
 import { Plan, PlanSchema } from '../plans/schemas/plan.schema';
+import {
+  Transaction,
+  TransactionSchema,
+} from '../transactions/schemas/transaction.schema';
 import { User, UserSchema } from '../users/schemas/user.schema';
+import { ExpenseCategoriesService } from './expense-categories.service';
 import {
   ExpenseCategory,
   ExpenseCategorySchema,
 } from './schemas/expense-category.schema';
-import { ExpenseCategoriesController } from './expense-categories.controller';
-import { ExpenseCategoriesService } from './expense-categories.service';
-
 @Module({
   imports: [
     MongooseModule.forFeature([
@@ -27,7 +25,7 @@ import { ExpenseCategoriesService } from './expense-categories.service';
       { name: Transaction.name, schema: TransactionSchema },
     ]),
   ],
-  controllers: [ExpenseCategoriesController],
+  controllers: [],
   providers: [ExpenseCategoriesService],
   exports: [ExpenseCategoriesService, MongooseModule],
 })

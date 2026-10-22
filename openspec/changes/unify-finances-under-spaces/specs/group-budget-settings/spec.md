@@ -1,0 +1,123 @@
+# Spec Delta
+
+## MODIFIED Requirements
+
+### Requirement: Group categories
+Все действующие участники SHALL читать категории пространства. Создание, изменение, архивирование и удаление SHALL требовать manageCategories. Названия SHALL быть уникальны внутри бюджета. Категорию с расходами, включая удалённые, или лимитами SHALL быть нельзя удалить: возвращается 409; её можно архивировать. Архивная категория SHALL сохраняться в истории, но не назначаться новой операции или лимиту.
+
+#### Scenario: Independent names
+- **WHEN** три пространства создают категорию с одинаковым названием
+- **THEN** все три категории существуют независимо
+
+#### Scenario: Archive used category
+- **WHEN** делегат архивирует используемую категорию
+- **THEN** история и отчёты сохраняются; новый расход с этой категорией получает 409
+
+#### Scenario: Edit historic expense
+- **WHEN** исправляется сумма старого расхода без смены его архивной категории
+- **THEN** операция разрешается при наличии прав на расход
+
+### Requirement: Group limits
+Все действующие участники SHALL читать лимиты пространства и остатки по ним. Создание, изменение и удаление SHALL требовать manageLimits. Лимит SHALL ссылаться на категорию того же бюджета, иметь обязательную неизменяемую currency, неотрицательную сумму с точностью этой валюты и корректный включительный период дат. Пересекающиеся периоды одной категории и валюты SHALL отклоняться с 409. Остаток SHALL учитывать расходы той же категории и валюты всех участников, включая бывших, за период; превышение SHALL не блокировать расход.
+
+#### Scenario: Common limit
+- **WHEN** два участника тратят по 100 в категории с лимитом 150
+- **THEN** остаток лимита равен -50 независимо от авторов записей
+
+#### Scenario: Concurrent overlapping limits
+- **WHEN** два делегата создают пересекающиеся лимиты одной категории и валюты
+- **THEN** только один сохраняется, второй запрос получает 409
+
+#### Scenario: Calculation failure
+- **WHEN** хранилище недоступно при расчёте использования лимита
+- **THEN** система возвращает ошибку, а не фиктивное нулевое использование
+
+### Requirement: Group reports
+Действующие участники SHALL получать месячные и годовые отчёты отдельного общего бюджета: массив элементов { period, currencies }, где каждая валютная корзина содержит доходы, расходы, разбивку по категориям и остаток на конец периода. Отчёты SHALL включать расходы бывших участников, исключать удалённые операции и не включать другие бюджеты. Фильтр participantId SHALL применяться к спискам и суммам расходов; баланс общего счёта SHALL не выдаваться за баланс участника.
+
+#### Scenario: Historical report
+- **WHEN** автор расходов покинул пространство, а другой участник запрашивает отчёт
+- **THEN** общие суммы и история расходов сохраняются
+
+#### Scenario: No personal contamination
+- **WHEN** пользователь получает отчёты трёх пространств
+- **THEN** каждый отчёт учитывает только свой бюджет
+
+### Requirement: Currency scoped group limit contract
+DTO общего лимита SHALL возвращать currency. Список SHALL поддерживать фильтр currency; неизвестный код и попытка PATCH валюты SHALL возвращать 400. Лимит SHALL допускаться в поддерживаемой валюте даже без счёта этой валюты; использование тогда равно нулю. Некорректная точность total при создании или PATCH SHALL возвращать 400 без изменений.
+
+#### Scenario: Parallel currency limits
+- **WHEN** создаются лимиты RUB 100 и KWD 0.100 одной категории на один период
+- **THEN** оба сохраняются; расход KWD 0.001 уменьшает только KWD-остаток до 0.099; RUB остаётся 100
+
+#### Scenario: Currency overlap on update
+- **WHEN** PATCH периода создаёт пересечение с другим лимитом той же категории и валюты
+- **THEN** возвращается 409; лимит другой валюты этому не препятствует
+
+#### Scenario: Currency filtered limits
+- **WHEN** лимиты запрашиваются с currency=KWD
+- **THEN** возвращаются только KWD-лимиты с KWD-использованием и остатками
+
+#### Scenario: Invalid monetary precision
+- **WHEN** лимит JPY создаётся или редактируется с total 0.1
+- **THEN** возвращается 400; прежние лимиты сохраняются
+
+### Requirement: Group report currency contract
+Каждый период отчёта пространства SHALL иметь только period и currencies. Корзина SHALL содержать currency, incomes, expenses, transfersIn, transfersOut, balance, saving, expensesByCategory с { categoryId, total }. Валюты SHALL сортироваться по коду и не складываться между собой. Денежные значения SHALL нормализоваться по minor units. balance SHALL суммировать остатки balance-счетов, saving — saving-счетов, включая архивные. transfersIn SHALL суммировать фактические зачисления переводов, transfersOut — списания, по валюте соответствующей стороны; saves SHALL отсутствовать.
+
+#### Scenario: Shared report shape
+- **WHEN** запрашивается отчёт пространства с balance-счётом KWD, начальным остатком 0.001 и доходом 0.002
+- **THEN** корзина KWD содержит incomes 0.002, balance 0.003 и нулевые остальные суммы; плоских incomes/expenses/balance/saves нет
+
+#### Scenario: Empty group
+- **WHEN** отчёт запрошен для пространства без счёта и операций
+- **THEN** каждый период возвращает currencies=[] без неявной валюты пользователя или пространства
+
+### Requirement: Group report calendar and historical balance
+Общий отчёт SHALL использовать полные UTC-месяцы/годы, period YYYY-MM или YYYY, начальную дату по умолчанию 1 января текущего UTC-года и конечную по умолчанию сейчас. Обратный диапазон и диапазон более 100 лет SHALL возвращать 400. Остаток SHALL учитывать initialAmount с openedAt и все неудалённые движения до конца периода, включая предыдущие периоды. Фильтр categories SHALL ограничивать расходы и разбивку, сохраняя полные доходы и баланс.
+
+#### Scenario: UTC and prior history
+- **WHEN** доход KWD 0.001 внесён 31 января в 23:59:59.999Z, расход 0.001 — 1 февраля в 00:00:00Z
+- **THEN** доход принадлежит январю, расход февралю; февральский остаток учитывает январь и начальную сумму без смешения годов
+
+#### Scenario: Opening boundary
+- **WHEN** запрошены месяцы до и после openedAt существующего счёта
+- **THEN** корзина валюты счёта присутствует в каждом периоде; balance до открытия 0, после открытия включает initialAmount
+
+#### Scenario: Category filter preserves full balance
+- **WHEN** отчёт ограничен одной категорией, а расходы есть также в другой
+- **THEN** расходы и expensesByCategory ограничены выбранной категорией, доходы и остаток счёта не ограничены
+
+#### Scenario: Archived categories and foreign filters
+- **WHEN** категория с историческими расходами архивируется
+- **THEN** расходы остаются в отчётах и разбивке; фильтр чужой категории возвращает 404 без раскрытия чужих данных
+
+### Requirement: Group report account type separation
+Общий отчёт SHALL суммировать все счета отдельно по currency и type на конец периода, учитывая initialAmount/openedAt и архивную историю. saving SHALL не включаться повторно в balance. Прямые доходы/расходы saving SHALL входить в incomes/expenses и категории ровно один раз; opening и архивирование SHALL не порождать доход/расход. Фильтр categories SHALL сохранять полные balance/saving/incomes.
+
+#### Scenario: Multiple accounts in one currency
+- **WHEN** у пространства RUB balance 100, второй RUB balance 20 и RUB saving с opening 50, доходом 10 и расходом 5
+- **THEN** RUB-корзина возвращает balance=120, saving=55, incomes=10, expenses=5; общие деньги 175 не выводятся как balance=175 вместе с saving=55
+
+#### Scenario: Multiple currencies and archival
+- **WHEN** дополнительно есть KWD saving 0.001, а RUB saving архивирован
+- **THEN** KWD и RUB остаются отдельными корзинами в порядке кода, KWD saving=0.001 и RUB saving=55; архив не меняет расходы, доходы и сохранённые остатки
+
+#### Scenario: Historical and filtered saving
+- **WHEN** запрашивается период до открытия saving или расход другого category исключён фильтром
+- **THEN** saving до открытия равен 0; фильтр меняет expenses/expensesByCategory, сохраняя полный saving, balance и incomes
+
+### Requirement: Group transfer reporting separates movements
+Каждый неудалённый перевод SHALL отражаться в transfersOut исходной валюты и transfersIn целевой валюты своего UTC-периода. Он SHALL не увеличивать incomes, expenses, expensesByCategory или использование лимитов. Для одной валюты обе суммы SHALL учитываться, даже внутри одного типа счетов. Категорийный фильтр SHALL не ограничивать переводы или общий balance/saving. Удалённый перевод SHALL исключаться из движений и остатков.
+
+#### Scenario: Reserve movement
+- **WHEN** из RUB balance с 1000 переведено 100 на RUB saving с 0
+- **THEN** отчёт показывает balance=900, saving=100, transfersOut=100, transfersIn=100, incomes=expenses=0; совокупные деньги пространства остаются 1000
+
+#### Scenario: Actual currency conversion
+- **WHEN** из RUB balance с 90000 переведено 90000 с зачислением USD 1000 на saving
+- **THEN** RUB transfersOut=90000 и balance=0, USD transfersIn=1000 и saving=1000; разные валюты не суммируются и доходы/расходы не возникают
+
+#### Scenario: Category filter and reversal
+- **WHEN** отчёт ограничен категорией после перевода либо перевод затем удалён
+- **THEN** фильтр не убирает transfer totals; после удаления обе стороны исключены из transfersIn/Out, а остатки восстановлены с учётом остальных операций

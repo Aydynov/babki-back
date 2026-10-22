@@ -1,8 +1,4 @@
 import {
-  personalBudget,
-  personalResponse,
-} from 'src/common/utils/personal-budget.util';
-import {
   BadRequestException,
   ConflictException,
   Injectable,
@@ -11,54 +7,27 @@ import {
 import { InjectModel } from '@nestjs/mongoose';
 import { ClientSession, Model, Types } from 'mongoose';
 import { BudgetContext, budgetFilter } from 'src/common/budget/budget-context';
-import { BudgetWriteService } from '../../budgets/budget-write.service';
+import { DeletionTargetNotFoundException } from 'src/common/lifecycle/deletion-policy';
 import {
-  DeletionRestrictedException,
-  DeletionTargetNotFoundException,
-} from 'src/common/lifecycle/deletion-policy';
+  hasValidMoneyPrecision,
+  normalizeCurrency,
+} from 'src/common/money/money';
 import { AccountsSnapshotsService } from 'src/modules/accounts-snapshots/accounts-snapshots.service';
-import { AccountSnapshotsDocument } from 'src/modules/accounts-snapshots/schemas/accounts-snapshots.schema';
 import { TransactionsService } from 'src/modules/transactions/transactions/transactions.service';
-import { UsersService } from '../../users/users.service';
-import { CreateAccountDto } from '../dto/create.dto';
 import { FindAccountQueryDto } from '../dto/find-query.dto';
 import {
   Account,
   AccountDocument,
   AccountType,
 } from '../schemas/accounts.schema';
-import {
-  hasValidMoneyPrecision,
-  normalizeCurrency,
-} from 'src/common/money/money';
-
 @Injectable()
 export class AccountsService {
   constructor(
     @InjectModel(Account.name)
     private readonly accountModel: Model<AccountDocument>,
-    private readonly usersService: UsersService,
     private readonly snapshotsService: AccountsSnapshotsService,
     private readonly transactionService: TransactionsService,
-    private readonly write: BudgetWriteService,
   ) {}
-
-  async findByParams(userId: string, query: FindAccountQueryDto) {
-    const foundUserId = await this.usersService.ensureIdExists(userId);
-    return this.listForBudget(personalBudget(foundUserId), query);
-  }
-
-  async create(userId: string, createAccountDto: CreateAccountDto) {
-    const foundUserId = await this.usersService.ensureIdExists(userId);
-    return this.write.run(personalBudget(foundUserId), userId, (session) =>
-      this.createForBudget(
-        personalBudget(foundUserId),
-        createAccountDto,
-        session,
-      ),
-    );
-  }
-
   async createForBudget(
     budget: BudgetContext,
     dto: {
@@ -70,7 +39,6 @@ export class AccountsService {
     },
     session: ClientSession,
   ) {
-    const personal = budget.ownerType === 'user';
     const amount = dto.amount ?? 0;
     const currency = normalizeCurrency(dto.currency!);
     if (!hasValidMoneyPrecision(amount, currency))
@@ -88,36 +56,17 @@ export class AccountsService {
       ],
       { session },
     );
-    const snapshot = await this.snapshotsService.openingForBudget(
-      createdEntity,
-      session,
-    );
-    if (!personal)
-      return {
-        ...createdEntity.toObject(),
-        amount: await this.snapshotsService.balanceForBudget(
-          createdEntity,
-          new Date(),
-          session,
-        ),
-        timeline: [],
-      };
-    if (createdEntity.type === 'balance') {
-      await this.usersService.selectFirstDefaultAccount(
-        String(budget.ownerId),
-        createdEntity._id,
-        currency,
+    await this.snapshotsService.openingForBudget(createdEntity, session);
+    return {
+      ...createdEntity.toObject(),
+      amount: await this.snapshotsService.balanceForBudget(
+        createdEntity,
+        new Date(),
         session,
-      );
-    }
-    const [response] = await this.buildResponse(
-      [createdEntity.toObject()],
-      undefined,
-      [{ _id: createdEntity._id, documents: [snapshot] }],
-    );
-    return response;
+      ),
+      timeline: [],
+    };
   }
-
   async listForBudget(budget: BudgetContext, query: FindAccountQueryDto = {}) {
     const filter = {
       ...budgetFilter(budget),
@@ -125,33 +74,29 @@ export class AccountsService {
       ...(query.currency ? { currency: query.currency } : {}),
     };
     const lookup = this.accountModel.find(filter);
-    if (budget.ownerType === 'user') lookup.sort({ createdAt: -1 });
     const entities = await lookup.lean().exec();
     return this.responseForBudget(budget, entities, { toDate: query.toDate });
   }
-
   async getForBudget(budget: BudgetContext, id: string) {
     const account = await this.accountModel
       .findOne({ _id: id, ...budgetFilter(budget) })
       .lean()
       .exec();
-    if (!account)
-      throw new NotFoundException(
-        budget.ownerType === 'user'
-          ? `Account ${id} not found.`
-          : 'Account not found',
-      );
+    if (!account) throw new NotFoundException('Account not found');
     return (await this.responseForBudget(budget, [account]))[0];
   }
-
   private async responseForBudget(
     budget: BudgetContext,
-    accounts: Array<Account & { _id: Types.ObjectId }>,
-    query?: { toDate?: string },
+    accounts: Array<
+      Account & {
+        _id: Types.ObjectId;
+      }
+    >,
+    query?: {
+      toDate?: string;
+    },
     session?: ClientSession,
   ) {
-    if (budget.ownerType === 'user')
-      return this.buildResponse(accounts as AccountDocument[], query);
     return Promise.all(
       accounts.map(async (account) => ({
         ...account,
@@ -167,15 +112,6 @@ export class AccountsService {
       })),
     );
   }
-
-  async findOne(userId: string, accountId: string) {
-    return this.getForBudget(personalBudget(userId), accountId);
-  }
-
-  rename(userId: string, accountId: string, name: string) {
-    return this.renameForBudget(personalBudget(userId), accountId, name);
-  }
-
   async renameForBudget(
     budget: BudgetContext,
     accountId: string,
@@ -194,48 +130,25 @@ export class AccountsService {
       )
       .lean()
       .exec();
-    if (!account)
-      throw new NotFoundException(
-        budget.ownerType === 'user'
-          ? `Account ${accountId} not found.`
-          : 'Account not found',
-      );
+    if (!account) throw new NotFoundException('Account not found');
     return (
       await this.responseForBudget(budget, [account], undefined, session)
     )[0];
   }
-
-  async deleteEntity(userId: string, entityId: string) {
-    return this.write.run(personalBudget(userId), userId, (session) =>
-      this.removeForBudget(personalBudget(userId), entityId, session),
-    );
-  }
-
   async removeForBudget(
     budget: BudgetContext,
     entityId: string,
     session: ClientSession,
   ) {
-    const personal = budget.ownerType === 'user';
-    const userId = String(budget.ownerId);
     await this.lockAccountForLifecycle(budget, entityId, session);
     const account = await this.accountModel
       .findOne({ _id: entityId, ...budgetFilter(budget) })
       .session(session)
       .lean()
       .exec();
-    if (!account)
-      throw personal
-        ? new DeletionTargetNotFoundException('Account')
-        : new NotFoundException('Account not found');
-    if (
-      (personal ? (account.initialAmount ?? 0) : account.initialAmount) !== 0
-    ) {
-      if (!personal)
-        throw new ConflictException('Wallet has financial history');
-      throw new DeletionRestrictedException(
-        'Account with an initial balance cannot be deleted',
-      );
+    if (!account) throw new NotFoundException('Account not found');
+    if (account.initialAmount !== 0) {
+      throw new ConflictException('Wallet has financial history');
     }
     if (
       await this.transactionService.hasHistoryForBudget(
@@ -244,9 +157,7 @@ export class AccountsService {
         session,
       )
     ) {
-      if (!personal)
-        throw new ConflictException('Wallet has financial history');
-      throw new DeletionRestrictedException('Account has financial history');
+      throw new ConflictException('Wallet has financial history');
     }
     await this.snapshotsService.deleteForBudget(budget, entityId, session);
     const deleted = await this.accountModel.findOneAndDelete(
@@ -254,18 +165,8 @@ export class AccountsService {
       { session },
     );
     if (!deleted) throw new DeletionTargetNotFoundException('Account');
-    if (personal)
-      await this.usersService.clearDefaultAccount(userId, entityId, session);
     return null;
   }
-
-  archive(userId: string, entityId: string) {
-    const budget = personalBudget(userId);
-    return this.write.run(budget, userId, (session) =>
-      this.archiveForBudget(budget, entityId, session),
-    );
-  }
-
   async archiveForBudget(
     budget: BudgetContext,
     entityId: string,
@@ -281,44 +182,7 @@ export class AccountsService {
       .lean()
       .exec();
     if (!archived) throw new DeletionTargetNotFoundException('Account');
-    if (budget.ownerType === 'user')
-      await this.usersService.clearDefaultAccount(
-        String(budget.ownerId),
-        entityId,
-        session,
-      );
   }
-
-  async buildResponse(
-    entities: AccountDocument[],
-    query?: { toDate?: string },
-    existingSnapshots?: {
-      _id: Types.ObjectId;
-      documents: AccountSnapshotsDocument[];
-    }[],
-  ) {
-    const snapshotGroups =
-      existingSnapshots ??
-      (await this.snapshotsService.findAllByAccounts(
-        entities.map((entity) => entity._id),
-        query,
-      ));
-
-    return entities.map((entity) => {
-      const entitySnapshots: AccountSnapshotsDocument[] =
-        snapshotGroups.find(
-          (group) => group._id.toString() === entity._id.toString(),
-        )?.documents ?? [];
-      return {
-        ...personalResponse(entity),
-        initialAmount: entity.initialAmount ?? 0,
-        openedAt: entity.openedAt,
-        amount: entitySnapshots[0]?.amount ?? 0,
-        timeline: entitySnapshots,
-      };
-    });
-  }
-
   private async lockAccountForLifecycle(
     budget: BudgetContext,
     entityId: string,

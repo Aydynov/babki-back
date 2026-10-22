@@ -1,0 +1,12 @@
+$kind: http-request
+name: Removed route /debts
+url: '{{base_url}}/debts'
+method: GET
+headers:
+  Accept: application/json
+order: 18008
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |
+      pm.test('HTTP 404', () => pm.response.to.have.status(404));

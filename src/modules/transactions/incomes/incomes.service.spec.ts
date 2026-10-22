@@ -4,9 +4,9 @@ import { IncomeDocument } from '../schemas/income.schema';
 import { TransactionsService } from '../transactions/transactions.service';
 import { CreateIncomeDto } from './dto/create-income.dto';
 import { IncomesService } from './incomes.service';
-
 describe('IncomesService transaction origin', () => {
   const userId = '507f1f77bcf86cd799439011';
+  const budget = { spaceId: new Types.ObjectId('507f1f77bcf86cd799439099') };
   const accountId = new Types.ObjectId('507f1f77bcf86cd799439012');
   const snapshotId = new Types.ObjectId('507f1f77bcf86cd799439013');
   const incomeModel = { create: jest.fn() };
@@ -17,30 +17,18 @@ describe('IncomesService transaction origin', () => {
   const transactions = {
     validateMoneyForBudget:
       TransactionsService.prototype.validateMoneyForBudget,
-    ensureUserExists: jest.fn(),
     accountForCreate: jest.fn(),
     lockAccountsForBudget: jest.fn(),
-    runForBudget: jest.fn(),
   };
   const service = new IncomesService(
     incomeModel as unknown as Model<IncomeDocument>,
     snapshots as unknown as AccountsSnapshotsService,
     transactions as unknown as TransactionsService,
   );
-
   beforeEach(() => {
     jest.clearAllMocks();
-    transactions.runForBudget.mockImplementation(
-      (
-        _budget,
-        _actor,
-        work: (session: ClientSession) => Promise<unknown>,
-        session: ClientSession,
-      ) => work(session),
-    );
     transactions.accountForCreate.mockResolvedValue({
-      ownerType: 'user',
-      ownerId: new Types.ObjectId(userId),
+      ...budget,
       _id: accountId,
       currency: 'USD',
     });
@@ -52,7 +40,6 @@ describe('IncomesService transaction origin', () => {
       { toObject: () => ({ _id: new Types.ObjectId() }) },
     ]);
   });
-
   it('persists an internal transaction origin', async () => {
     const session = {} as ClientSession;
     const dto: CreateIncomeDto = {
@@ -64,11 +51,15 @@ describe('IncomesService transaction origin', () => {
       type: 'debt' as const,
       id: new Types.ObjectId('507f1f77bcf86cd799439014'),
     };
-
-    await service.create(userId, dto, session, origin);
-
+    await service.createForBudget(budget, userId, dto, session, origin);
     expect(incomeModel.create).toHaveBeenCalledWith(
-      [expect.objectContaining({ origin })],
+      [
+        expect.objectContaining({
+          origin,
+          ...budget,
+          createdBy: new Types.ObjectId(userId),
+        }),
+      ],
       { session },
     );
   });

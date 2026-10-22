@@ -9,7 +9,6 @@ import { RegisterDto } from './dto/register.dto';
 import { AuthenticatedUser } from './interfaces/authenticated-user.interface';
 import { AuthThrottleService } from './services/auth-throttle.service';
 import { TwoFactorService } from './services/two-factor.service';
-import { normalizeCurrency } from 'src/common/money/money';
 
 const PASSWORD_SALT_ROUNDS = 12;
 const DUMMY_PASSWORD_HASH =
@@ -36,7 +35,6 @@ export class AuthService {
         lastName: registerDto.lastName,
         email: registerDto.email,
         description: registerDto.notes,
-        defaultCurrency: normalizeCurrency(registerDto.currency),
       },
       passwordHash,
     );

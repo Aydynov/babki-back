@@ -1,7 +1,7 @@
 $kind: http-request
 description: |
   Source: src/modules/users/users.controller.ts
-url: "{{base_url}}/users/me"
+url: '{{base_url}}/users/me'
 method: GET
 headers:
   Accept: application/json

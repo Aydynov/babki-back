@@ -3,14 +3,13 @@ import { DebtSchema } from 'src/modules/debts/schemas/debt.schema';
 import { DebtTransactionSchema } from 'src/modules/debt-transactions/schemas/debt-transaction.schema';
 import { ExpenseCategorySchema } from 'src/modules/expense-categories/schemas/expense-category.schema';
 import { ExpenseLimitSchema } from 'src/modules/expense-limits/schemas/expense-limit.schema';
-import { GroupInvitationSchema } from 'src/modules/groups/schemas/group-invitation.schema';
-import { GroupMembershipSchema } from 'src/modules/groups/schemas/group-membership.schema';
+import { SpaceInvitationSchema } from 'src/modules/spaces/schemas/space-invitation.schema';
+import { SpaceMembershipSchema } from 'src/modules/spaces/schemas/space-membership.schema';
 import { PlanSchema } from 'src/modules/plans/schemas/plan.schema';
 import { TransactionSchema } from 'src/modules/transactions/schemas/transaction.schema';
 import { TransferSchema } from 'src/modules/transactions/schemas/transfer.schema';
 import { UserDeletionJobSchema } from 'src/modules/users/schemas/user-deletion-job.schema';
 import { UserSchema } from 'src/modules/users/schemas/user.schema';
-
 describe('lifecycle schema defaults', () => {
   it.each([
     ['account', AccountsSchema],
@@ -19,37 +18,35 @@ describe('lifecycle schema defaults', () => {
   ])('%s is active by default', (_name, schema) => {
     const path = (
       schema as unknown as {
-        path(name: string): { options: { default: unknown } };
+        path(name: string): {
+          options: {
+            default: unknown;
+          };
+        };
       }
     ).path('archivedAt');
     expect(path.options.default).toBeNull();
   });
-
   it('serializes category dependency mutations', () => {
     expect(ExpenseCategorySchema.path('mutationVersion')?.options.default).toBe(
       0,
     );
   });
-
   it('stores a backward-compatible membership end reason', () => {
-    const path = GroupMembershipSchema.path('endReason');
-
+    const path = SpaceMembershipSchema.path('endReason');
     expect(path?.options.default).toBeNull();
     expect(path?.options.enum).toEqual([
       'member_left',
       'member_removed',
-      'group_deleted',
+      'space_deleted',
       'user_deleted',
     ]);
   });
-
   it('stores a backward-compatible invitation revocation reason', () => {
-    const path = GroupInvitationSchema.path('revocationReason');
-
+    const path = SpaceInvitationSchema.path('revocationReason');
     expect(path?.options.default).toBeNull();
-    expect(path?.options.enum).toEqual(['manual', 'group_deleted']);
+    expect(path?.options.enum).toEqual(['manual', 'space_deleted']);
   });
-
   it('stores immutable plan and debt transaction origins', () => {
     expect(TransactionSchema.path('origin')?.options.immutable).toBe(true);
     expect(TransactionSchema.path('origin.type')?.options.enum).toEqual([
@@ -58,7 +55,6 @@ describe('lifecycle schema defaults', () => {
     ]);
     expect(TransactionSchema.path('origin.id')).toBeDefined();
   });
-
   it('keeps existing users active by default', () => {
     expect(UserSchema.path('status')?.options).toMatchObject({
       default: 'active',
@@ -67,17 +63,10 @@ describe('lifecycle schema defaults', () => {
     });
     expect(UserSchema.path('deletedAt')?.options.default).toBeNull();
   });
-
   it('defines a durable, uniquely user-scoped deletion job', () => {
     expect(UserDeletionJobSchema.path('stage')?.options).toMatchObject({
       default: 'memberships',
-      enum: [
-        'memberships',
-        'personal_finance',
-        'auth_data',
-        'tombstone',
-        'completed',
-      ],
+      enum: ['memberships', 'auth_data', 'tombstone', 'completed'],
     });
     expect(
       UserDeletionJobSchema.path('leaseOwner')?.options.default,
@@ -103,7 +92,6 @@ describe('lifecycle schema defaults', () => {
       ]),
     );
   });
-
   it.each([
     [
       'transfer source account',
@@ -124,8 +112,7 @@ describe('lifecycle schema defaults', () => {
       'limit category',
       ExpenseLimitSchema,
       {
-        ownerType: 1,
-        ownerId: 1,
+        spaceId: 1,
         category: 1,
         currency: 1,
         startDate: -1,
@@ -145,17 +132,12 @@ describe('lifecycle schema defaults', () => {
       DebtTransactionSchema,
       { debtId: 1, transactionDate: -1, createdAt: -1 },
     ],
-    [
-      'account lifecycle',
-      AccountsSchema,
-      { ownerType: 1, ownerId: 1, archivedAt: 1 },
-    ],
+    ['account lifecycle', AccountsSchema, { spaceId: 1, archivedAt: 1 }],
     [
       'transaction lifecycle',
       TransactionSchema,
       {
-        ownerType: 1,
-        ownerId: 1,
+        spaceId: 1,
         deletedAt: 1,
         transactionDate: -1,
         _id: -1,
@@ -165,8 +147,7 @@ describe('lifecycle schema defaults', () => {
       'category lifecycle',
       ExpenseCategorySchema,
       {
-        ownerType: 1,
-        ownerId: 1,
+        spaceId: 1,
         isArchived: 1,
         createdAt: -1,
       },
@@ -174,16 +155,20 @@ describe('lifecycle schema defaults', () => {
     [
       'plan lifecycle',
       PlanSchema,
-      { userId: 1, archivedAt: 1, targetDate: 1, createdAt: -1 },
+      { spaceId: 1, archivedAt: 1, targetDate: 1, createdAt: -1, _id: -1 },
     ],
-    ['debt lifecycle', DebtSchema, { userId: 1, archivedAt: 1, createdAt: -1 }],
+    [
+      'debt lifecycle',
+      DebtSchema,
+      { spaceId: 1, archivedAt: 1, createdAt: -1, _id: -1 },
+    ],
     ['user lifecycle', UserSchema, { status: 1, deletedAt: 1 }],
     [
       'membership cleanup',
-      GroupMembershipSchema,
-      { groupId: 1, status: 1, joinedAt: 1, _id: 1 },
+      SpaceMembershipSchema,
+      { spaceId: 1, status: 1, joinedAt: 1, _id: 1 },
     ],
-    ['invitation cleanup', GroupInvitationSchema, { groupId: 1, status: 1 }],
+    ['invitation cleanup', SpaceInvitationSchema, { spaceId: 1, status: 1 }],
   ])('indexes %s lookups', (_name, schema, fields) => {
     expect(schema.indexes()).toEqual(
       expect.arrayContaining([[fields, expect.any(Object)]]),

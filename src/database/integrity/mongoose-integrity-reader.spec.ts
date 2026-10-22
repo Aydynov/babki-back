@@ -3,9 +3,9 @@ import { MongooseIntegrityReader } from './mongoose-integrity-reader';
 
 describe('MongooseIntegrityReader', () => {
   it('uses one read-only aggregation and never invokes model mutations', async () => {
-    const exec = jest.fn().mockResolvedValue([
-      { sourceId: 'source-1', targetId: 'target-1' },
-    ]);
+    const exec = jest
+      .fn()
+      .mockResolvedValue([{ sourceId: 'source-1', targetId: 'target-1' }]);
     const aggregate = jest.fn().mockReturnValue({ exec });
     const sourceWrites = {
       updateMany: jest.fn(),
@@ -40,9 +40,7 @@ describe('MongooseIntegrityReader', () => {
       sourceFilter: { status: 'active' },
     });
 
-    expect(result).toEqual([
-      { sourceId: 'source-1', targetId: 'target-1' },
-    ]);
+    expect(result).toEqual([{ sourceId: 'source-1', targetId: 'target-1' }]);
     expect(aggregate).toHaveBeenCalledWith([
       {
         $match: {

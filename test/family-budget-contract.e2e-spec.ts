@@ -1,52 +1,75 @@
+import {
+  createIsolatedSpaces,
+  isolatedFinancialPath,
+} from './helpers/isolated-spaces';
+let isolatedSpaceIds: string[];
 import { Types } from 'mongoose';
 import request, { Response } from 'supertest';
 import {
   UserDeletionService,
   UserDeletionWorker,
 } from '../src/modules/users/user-deletion.service';
-import { startGroupsTestApp } from './helpers/groups-test-app';
-
-type Row = { _id: string } & Record<string, unknown>;
-type Page = { items: Row[]; total: number; page: number; limit: number };
-type RepaymentResult = { debt: Row; repayment: Row };
+import { startSpacesTestApp } from './helpers/spaces-test-app';
+type Row = {
+  _id: string;
+} & Record<string, unknown>;
+type Page = {
+  items: Row[];
+  total: number;
+  page: number;
+  limit: number;
+};
+type RepaymentResult = {
+  debt: Row;
+  repayment: Row;
+};
 const idOf = (response: Response) => (response.body as Row)._id;
-
 describe('Family budget final HTTP contract (real replica set)', () => {
-  let ctx: Awaited<ReturnType<typeof startGroupsTestApp>>;
-  const api = (method: 'get' | 'post' | 'patch', path: string, user = 0) => {
+  let ctx: Awaited<ReturnType<typeof startSpacesTestApp>>;
+  const api = (
+    method: 'get' | 'post' | 'patch' | 'delete',
+    path: string,
+    user = 0,
+  ) => {
     const call = request(
       ctx.app.getHttpServer() as Parameters<typeof request>[0],
-    )[method](`/api/v1${path}`);
+    )[method](`/api/v1${isolatedFinancialPath(isolatedSpaceIds[user], path)}`);
     return user < 0
       ? call
       : call.auth(ctx.users[user].token, { type: 'bearer' });
   };
   const get = async (path: string, user = 0): Promise<unknown> =>
     (await api('get', path, user).expect(200)).body as unknown;
-  const createGroup = async (name: string) =>
+  const createSpace = async (name: string) =>
     (
-      (await api('post', '/groups').send({ name, type: 'family' }).expect(201))
-        .body as { id: string }
+      (await api('post', '/spaces').send({ name }).expect(201)).body as {
+        id: string;
+      }
     ).id;
   const january = '/reports/months?fromDate=2024-01-01&toDate=2024-01-31';
   beforeAll(async () => {
-    ctx = await startGroupsTestApp(['USD', 'EUR']);
+    ctx = await startSpacesTestApp(['USD', 'EUR']);
+    isolatedSpaceIds = await createIsolatedSpaces(ctx);
   }, 60000);
   afterAll(async () => ctx?.close());
-
   it('connects invitation, delegated finances, plans, debts, isolation and anonymous history', async () => {
     // Personal settings and control budgets are independent of family currencies.
-    const controls: { path: string; user: number; before: unknown }[] = [];
+    const controls: {
+      path: string;
+      user: number;
+      before: unknown;
+    }[] = [];
     const personalIds: string[] = [];
     for (const [user, currency] of ['USD', 'EUR'].entries()) {
       expect(await get('/users/me', user)).toMatchObject({
-        defaultCurrency: currency,
+        firstName: expect.any(String) as unknown,
       });
       personalIds.push(
         idOf(
           await api('post', '/accounts', user)
             .send({
-              name: `Personal ${currency}`,
+              openedAt: '2024-01-01',
+              name: `Individual ${currency}`,
               type: 'balance',
               currency,
               amount: 37,
@@ -57,7 +80,7 @@ describe('Family budget final HTTP contract (real replica set)', () => {
       for (const path of ['/accounts', '/transactions', '/plans', '/debts'])
         controls.push({ path, user, before: await get(path, user) });
     }
-    const second = `/groups/${await createGroup('Second budget')}`;
+    const second = `/spaces/${await createSpace('Second budget')}`;
     const secondAccount = idOf(
       await api('post', `${second}/accounts`)
         .send({
@@ -78,24 +101,23 @@ describe('Family budget final HTTP contract (real replica set)', () => {
       const path = `${second}${suffix}`;
       controls.push({ path, user: 0, before: await get(path) });
     }
-    const groupId = await createGroup('Family contract');
-    const base = `/groups/${groupId}`;
+    const spaceId = await createSpace('Family contract');
+    const base = `/spaces/${spaceId}`;
     const invite = (await api('post', `${base}/invitations`).expect(201))
       .body as {
       token: string;
       expiresAt: string;
     };
-    const preview = await api('post', '/group-invitations/preview', 1)
+    const preview = await api('post', '/space-invitations/preview', 1)
       .send({ token: invite.token })
       .expect(200);
     expect(preview.body).toEqual({
       name: 'Family contract',
-      type: 'family',
       expiresAt: invite.expiresAt,
     });
     expect(preview.headers['cache-control']).toBe('no-store');
     await api('get', base, 1).expect(404);
-    await api('post', '/group-invitations/accept', 1)
+    await api('post', '/space-invitations/accept', 1)
       .send({ token: invite.token })
       .expect(200);
     const permissions = {
@@ -108,7 +130,7 @@ describe('Family budget final HTTP contract (real replica set)', () => {
       .send(permissions)
       .expect(200);
     expect(await get(base, 1)).toMatchObject({
-      id: groupId,
+      id: spaceId,
       role: 'member',
       permissions,
     });
@@ -260,7 +282,6 @@ describe('Family budget final HTTP contract (real replica set)', () => {
       'get',
       `${base}/incomes/${String(cancelled.repayment.incomeId)}`,
     ).expect(404);
-
     const expectedReport = [
       {
         period: '2024-01',
@@ -362,7 +383,6 @@ describe('Family budget final HTTP contract (real replica set)', () => {
     expect(await get(`${base}${january}`)).toEqual(expectedReport);
     for (const control of controls)
       expect(await get(control.path, control.user)).toEqual(control.before);
-
     await api('patch', '/users/me', 1)
       .send({ firstName: 'Renamed spouse' })
       .expect(200);
@@ -412,10 +432,11 @@ describe('Family budget final HTTP contract (real replica set)', () => {
       for (const control of controls.filter((c) => c.user === 0))
         expect(await get(control.path)).toEqual(control.before);
     };
+    await api('delete', `/spaces/${isolatedSpaceIds[1]}`, 1).expect(204);
     await ctx.app.get(UserDeletionService).request(ctx.users[1].id);
     await assertAnonymous();
     const worker = ctx.app.get(UserDeletionWorker);
-    for (let stage = 0; stage < 4; stage++)
+    for (let stage = 0; stage < 3; stage++)
       await expect(worker.runOnce('family-contract')).resolves.toBe(true);
     expect(
       await ctx.connection

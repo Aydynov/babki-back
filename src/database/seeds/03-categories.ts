@@ -1,8 +1,6 @@
 import { INestApplicationContext } from '@nestjs/common';
-import { ExpenseCategoriesService } from '../../modules/expense-categories/expense-categories.service';
-
+import { SpaceSettingsService } from '../../modules/space-finances/space-settings.service';
 export type CategoryMap = Record<string, string>;
-
 const CATEGORIES = [
   { name: 'Food & Dining', color: '#FF6B6B' },
   { name: 'Transport', color: '#4ECDC4' },
@@ -13,25 +11,25 @@ const CATEGORIES = [
   { name: 'Deletion test: unused', color: '#A0A0A0' },
   { name: 'Deletion test: archived', color: '#707070' },
 ] as const;
-
 export async function seedCategories(
   app: INestApplicationContext,
   userId: string,
+  spaceId: string,
 ): Promise<CategoryMap> {
-  const categoriesService = app.get(ExpenseCategoriesService);
+  const categoriesService = app.get(SpaceSettingsService);
   const result: CategoryMap = {};
-
   for (const cat of CATEGORIES) {
-    const created = await categoriesService.create(userId, {
+    const created = await categoriesService.saveCategory(spaceId, userId, {
       name: cat.name,
       color: cat.color,
     });
     result[cat.name] = String(created._id);
   }
-
-  await categoriesService.update(userId, result['Deletion test: archived'], {
-    isArchived: true,
-  });
-
+  await categoriesService.saveCategory(
+    spaceId,
+    userId,
+    { isArchived: true },
+    result['Deletion test: archived'],
+  );
   return result;
 }

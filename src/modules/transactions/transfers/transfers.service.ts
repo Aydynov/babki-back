@@ -14,10 +14,6 @@ import {
   normalizeMoney,
 } from '../../../common/money/money';
 import { getPagination } from '../../../common/utils/pagination.util';
-import {
-  personalBudget,
-  personalResponse,
-} from '../../../common/utils/personal-budget.util';
 import { AccountsSnapshotsService } from '../../accounts-snapshots/accounts-snapshots.service';
 import { Account } from '../../accounts/schemas/accounts.schema';
 import { ListTransactionsQueryDto } from '../dto/list-transactions-query.dto';
@@ -27,31 +23,17 @@ import { TransactionsService } from '../transactions/transactions.service';
 import { CreateTransferDto } from './dto/create-transfer.dto';
 import { UpdateTransferDto } from './dto/update-transfer.dto';
 import { transferResponse } from './transfer-response';
-
-type TransferAccount = Account & { _id: Types.ObjectId };
-
+type TransferAccount = Account & {
+  _id: Types.ObjectId;
+};
 @Injectable()
 export class TransfersService {
   constructor(
-    @InjectModel(Transfer.name) private readonly model: Model<TransferDocument>,
+    @InjectModel(Transfer.name)
+    private readonly model: Model<TransferDocument>,
     private readonly snapshots: AccountsSnapshotsService,
     private readonly transactions: TransactionsService,
   ) {}
-
-  async create(userId: string, dto: CreateTransferDto) {
-    this.validateAccounts(dto);
-    return this.inTransaction(userId, async (session) =>
-      personalResponse(
-        await this.createForBudget(
-          personalBudget(userId),
-          userId,
-          dto,
-          session,
-        ),
-      ),
-    );
-  }
-
   async createForBudget(
     budget: BudgetContext,
     actorId: string,
@@ -94,7 +76,7 @@ export class TransfersService {
       dto.destinationAmount,
       destination.currency!,
     );
-    if (budget.ownerType === 'group') {
+    {
       const available = await this.snapshots.balanceForBudget(
         source,
         date,
@@ -113,8 +95,6 @@ export class TransfersService {
       date,
       session,
     );
-    if (budget.ownerType === 'user' && sourceSnapshot.amount < sourceAmount)
-      throw new BadRequestException('Insufficient source funds.');
     const [transfer] = await this.model.create(
       [
         {
@@ -149,33 +129,16 @@ export class TransfersService {
     );
     return transferResponse(stored);
   }
-
-  async findAll(userId: string, query: ListTransactionsQueryDto) {
-    await this.transactions.ensureUserExists(userId);
-    return personalResponse(
-      await this.findAllForBudget(personalBudget(userId), query),
-    );
-  }
-
   async findAllForBudget(
     budget: BudgetContext,
     query: ListTransactionsQueryDto,
   ) {
     const { page, limit, skip } = getPagination(query);
-    const { accountId, ...baseQuery } = query;
     const filter: Record<string, unknown> =
       this.transactions.buildFilterForBudget(budget, {
-        ...(budget.ownerType === 'user' ? baseQuery : query),
+        ...query,
         transactionType: 'transfer',
       });
-    // Preserve the dedicated personal endpoint's existing account-filter policy.
-    if (budget.ownerType === 'user' && accountId) {
-      const id = new Types.ObjectId(accountId);
-      filter.$or = [
-        { 'source.accountId': id },
-        { 'destination.accountId': id },
-      ];
-    }
     const [items, total] = await Promise.all([
       this.model
         .find(filter)
@@ -188,17 +151,9 @@ export class TransfersService {
     ]);
     return { items: items.map(transferResponse), total, page, limit };
   }
-
-  async findOne(userId: string, id: string) {
-    return personalResponse(
-      await this.findOneForBudget(personalBudget(userId), id),
-    );
-  }
-
   async findOneForBudget(budget: BudgetContext, id: string) {
     return transferResponse(await this.getStoredForBudget(budget, id));
   }
-
   async getStoredForBudget(
     budget: BudgetContext,
     id: string,
@@ -212,15 +167,6 @@ export class TransfersService {
     if (!transfer) throw new NotFoundException(`Transfer ${id} not found.`);
     return transfer;
   }
-
-  async update(userId: string, id: string, dto: UpdateTransferDto) {
-    return this.inTransaction(userId, async (session) =>
-      personalResponse(
-        await this.updateForBudget(personalBudget(userId), id, dto, session),
-      ),
-    );
-  }
-
   async updateForBudget(
     budget: BudgetContext,
     id: string,
@@ -255,16 +201,7 @@ export class TransfersService {
       sourceAmount - transfer.source.amount,
       transfer.source.currency,
     );
-    if (budget.ownerType === 'user') {
-      const snapshot = await this.snapshots.findByAccountId(
-        String(budget.ownerId),
-        String(source._id),
-        transfer.transactionDate.toISOString(),
-        session,
-      );
-      if (!snapshot || snapshot.amount < extraDebit)
-        throw new BadRequestException('Insufficient source funds.');
-    } else if (extraDebit > 0) {
+    if (extraDebit > 0) {
       const available = await this.snapshots.balanceForBudget(
         source,
         transfer.transactionDate,
@@ -273,7 +210,7 @@ export class TransfersService {
       if (available < extraDebit)
         throw new BadRequestException('Insufficient source funds.');
     }
-    // The group rebuild must read the replacement amounts from the ledger.
+    // The space rebuild must read the replacement amounts from the ledger.
     const updated = await this.model
       .findOneAndUpdate(
         { _id: id, ...budgetFilter(budget), ...activeTransactionFilter },
@@ -301,13 +238,6 @@ export class TransfersService {
     );
     return transferResponse(updated);
   }
-
-  async delete(userId: string, id: string) {
-    return this.inTransaction(userId, (session) =>
-      this.deleteForBudget(personalBudget(userId), userId, id, session),
-    );
-  }
-
   async deleteForBudget(
     budget: BudgetContext,
     actorId: string,
@@ -338,7 +268,6 @@ export class TransfersService {
     );
     return null;
   }
-
   private async lockTransferAccounts(
     budget: BudgetContext,
     transfer: Transfer,
@@ -363,43 +292,36 @@ export class TransfersService {
     );
     return [source, destination] as const;
   }
-
-  private validateAccounts(dto: CreateTransferDto, budget?: BudgetContext) {
+  private validateAccounts(dto: CreateTransferDto, _budget?: BudgetContext) {
     const source = dto.sourceAccountId;
     const destination = dto.destinationAccountId;
     if (
       source === destination ||
-      (budget?.ownerType === 'group' &&
-        source.toLowerCase() === destination.toLowerCase())
+      source.toLowerCase() === destination.toLowerCase()
     )
       throw new BadRequestException('Transfer accounts must be different.');
   }
-
   private amountForBudget(
-    budget: BudgetContext,
+    _budget: BudgetContext,
     amount: number,
     currency: string,
   ) {
-    return budget.ownerType === 'group'
-      ? normalizeMoney(amount, currency)
-      : amount;
+    return normalizeMoney(amount, currency);
   }
-
   private validateAmounts(
     sourceCurrency: string,
     destinationCurrency: string,
     source: number,
     destination: number,
-    budget: BudgetContext,
+    _budget: BudgetContext,
   ) {
     if (
-      budget.ownerType === 'group' &&
-      (!Number.isFinite(source) ||
-        !Number.isFinite(destination) ||
-        source <= 0 ||
-        destination <= 0 ||
-        normalizeMoney(source, sourceCurrency) <= 0 ||
-        normalizeMoney(destination, destinationCurrency) <= 0)
+      !Number.isFinite(source) ||
+      !Number.isFinite(destination) ||
+      source <= 0 ||
+      destination <= 0 ||
+      normalizeMoney(source, sourceCurrency) <= 0 ||
+      normalizeMoney(destination, destinationCurrency) <= 0
     )
       throw new BadRequestException('Transfer amounts must be positive.');
     if (
@@ -416,7 +338,6 @@ export class TransfersService {
         'Same-currency transfer amounts must be equal.',
       );
   }
-
   private async apply(
     source: TransferAccount,
     destination: TransferAccount,
@@ -437,12 +358,5 @@ export class TransfersService {
       destinationDelta,
       session,
     );
-  }
-
-  private inTransaction<T>(
-    userId: string,
-    work: (session: ClientSession) => Promise<T>,
-  ) {
-    return this.transactions.runForBudget(personalBudget(userId), userId, work);
   }
 }

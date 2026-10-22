@@ -1,49 +1,48 @@
 $kind: collection
 name: Babki API — current
-description: "All current routes. Run individual requests or selected folders. Do not run the whole catalog: security operations, deletes and ownership changes are manual."
+description: 'All current routes. Run individual requests or selected folders. Do not run the whole catalog: security operations, deletes and ownership changes are manual.'
 variables:
   currency: RUB
-  now: ""
-  future_date: ""
-  from_date: ""
-  to_date: ""
-  run_id: ""
-  challenge_token: ""
-  second_factor_code: ""
-  invitation_token: ""
-  account_id: ""
-  category_id: ""
-  group_account_id: ""
-  group_source_account_id: ""
-  group_destination_account_id: ""
-  group_category_id: ""
-  participant_id: ""
-  group_categories: ""
-  user_id: ""
-  categories: ""
-  snapshot_id: ""
-  source_account_id: ""
-  destination_account_id: ""
-  default_account_id: ""
-  debt_id: ""
-  debt_transaction_id: ""
-  limit_id: ""
-  group_id: ""
-  group_debt_id: ""
-  group_repayment_id: ""
-  group_transfer_id: ""
-  group_expense_id: ""
-  group_income_id: ""
-  group_limit_id: ""
-  group_plan_id: ""
-  group_invitation_id: ""
-  plan_id: ""
-  expense_id: ""
-  income_id: ""
-  transaction_id: ""
-  transfer_id: ""
+  now: ''
+  future_date: ''
+  from_date: ''
+  to_date: ''
+  run_id: ''
+  challenge_token: ''
+  second_factor_code: ''
+  invitation_token: ''
+  account_id: ''
+  category_id: ''
+  space_account_id: ''
+  space_source_account_id: ''
+  space_destination_account_id: ''
+  space_category_id: ''
+  participant_id: ''
+  space_categories: ''
+  user_id: ''
+  categories: ''
+  snapshot_id: ''
+  source_account_id: ''
+  destination_account_id: ''
+  debt_id: ''
+  debt_transaction_id: ''
+  limit_id: ''
+  space_id: ''
+  space_debt_id: ''
+  space_repayment_id: ''
+  space_transfer_id: ''
+  space_expense_id: ''
+  space_income_id: ''
+  space_limit_id: ''
+  space_plan_id: ''
+  space_invitation_id: ''
+  plan_id: ''
+  expense_id: ''
+  income_id: ''
+  transaction_id: ''
+  transfer_id: ''
 scripts:
-  - type: http:beforeRequest
+  - type: 'http:beforeRequest'
     code: |-
       const base = pm.variables.get('base_url');
       if (!base || !/^https?:\/\//.test(base)) throw new Error('Select an environment and set base_url');
@@ -60,4 +59,4 @@ auth:
     type: bearer
     name: bearer auth
     credentials:
-      token: "{{access_token}}"
+      token: '{{access_token}}'

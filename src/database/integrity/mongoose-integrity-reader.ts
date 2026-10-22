@@ -1,11 +1,9 @@
 import { Connection, PipelineStage } from 'mongoose';
 import { IntegrityReader, OrphanReference } from './integrity-audit';
 import { IntegrityRelation } from './integrity-relations';
-import { findDebtViolations } from './group-debt-integrity';
-
+import { findDebtViolations } from './space-debt-integrity';
 export class MongooseIntegrityReader implements IntegrityReader {
   constructor(private readonly connection: Connection) {}
-
   async findOrphans(relation: IntegrityRelation): Promise<OrphanReference[]> {
     if (relation.debtCheck)
       return findDebtViolations(this.connection, relation.debtCheck);
@@ -16,15 +14,14 @@ export class MongooseIntegrityReader implements IntegrityReader {
         `Integrity audit model is not registered: ${relation.id}`,
       );
     }
-
     const conditions: Record<string, unknown>[] = [
       { $eq: ['$_id', '$$targetId'] },
     ];
     if (relation.sameBudget) {
-      conditions.push(
-        { $eq: ['$ownerType', '$$ownerType'] },
-        { $eq: ['$ownerId', '$$ownerId'] },
-      );
+      conditions.push({ $eq: ['$spaceId', '$$spaceId'] });
+    }
+    if (relation.snapshotAccountField) {
+      conditions.push({ $eq: ['$accountId', '$$snapshotAccountId'] });
     }
     if (relation.planOrigin) {
       conditions.push(
@@ -56,8 +53,9 @@ export class MongooseIntegrityReader implements IntegrityReader {
           from: target.collection.name,
           let: {
             targetId: `$${relation.sourceField}`,
-            ...(relation.sameBudget
-              ? { ownerType: '$ownerType', ownerId: '$ownerId' }
+            ...(relation.sameBudget ? { spaceId: '$spaceId' } : {}),
+            ...(relation.snapshotAccountField
+              ? { snapshotAccountId: `$${relation.snapshotAccountField}` }
               : {}),
             ...(relation.planOrigin ? { planId: '$_id' } : {}),
             ...(relation.expenseOrigin ? { expenseId: '$_id' } : {}),
@@ -75,7 +73,6 @@ export class MongooseIntegrityReader implements IntegrityReader {
         },
       },
     ];
-
     return source.aggregate<OrphanReference>(pipeline).exec();
   }
 }

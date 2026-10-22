@@ -3,7 +3,7 @@ name: POST /auth/account-deletion
 description: |-
   Source: src/modules/auth/auth.controller.ts
   Optional body fields: secondFactorCode
-url: "{{base_url}}/auth/account-deletion"
+url: '{{base_url}}/auth/account-deletion'
 method: POST
 headers:
   Accept: application/json

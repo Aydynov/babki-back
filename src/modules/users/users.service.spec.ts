@@ -18,7 +18,7 @@ describe('UsersService authentication state', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    service = new UsersService(userModel as never, {} as never);
+    service = new UsersService(userModel as never);
   });
 
   it('hides authentication version with a zero default', () => {
@@ -28,14 +28,9 @@ describe('UsersService authentication state', () => {
     });
   });
 
-  it('requires a default currency and allows a nullable default account', () => {
-    expect(UserSchema.path('defaultCurrency').options).toMatchObject({
-      required: true,
-      type: String,
-    });
-    expect(UserSchema.path('defaultAccountId').options).toMatchObject({
-      default: null,
-    });
+  it('has no financial defaults', () => {
+    expect(UserSchema.path('defaultCurrency')).toBeUndefined();
+    expect(UserSchema.path('defaultAccountId')).toBeUndefined();
   });
 
   it('returns only the minimal authentication state', async () => {

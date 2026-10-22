@@ -77,7 +77,6 @@ describe('runtime configuration files', () => {
       expectedSecretKeys: [...authenticationSecretKeys, 'MONGO_URI'],
     },
   ];
-
   it.each(cases)(
     '$envFile and $secretFile form a complete non-overlapping pair',
     ({
@@ -142,9 +141,14 @@ describe('runtime configuration files', () => {
         services: {
           api: {
             environment: Record<string, string>;
-            healthcheck: { test: string[] };
+            healthcheck: {
+              test: string[];
+            };
             image?: string;
-            ports: Array<{ published: string; target: number }>;
+            ports: Array<{
+              published: string;
+              target: number;
+            }>;
             volumes: Array<{
               read_only: boolean;
               source: string;

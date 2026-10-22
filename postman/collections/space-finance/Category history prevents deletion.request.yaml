@@ -1,0 +1,12 @@
+$kind: http-request
+description: |
+  Source: src/modules/expense-categories/expense-categories.controller.ts
+url: '{{base_url}}/spaces/{{space_id}}/expense-categories/{{category_id}}'
+method: DELETE
+headers:
+  Accept: application/json
+scripts:
+  - type: afterResponse
+    code: 'pm.test(''Category history is preserved'', () => pm.response.to.have.status(409));'
+    language: text/javascript
+order: 13000

@@ -1,9 +1,9 @@
 import { BadRequestException } from '@nestjs/common';
 import { ClientSession, Types } from 'mongoose';
 import { TransfersService } from './transfers.service';
-
 describe('TransfersService', () => {
   const userId = new Types.ObjectId().toString();
+  const budget = { spaceId: new Types.ObjectId(userId) };
   const sourceId = new Types.ObjectId().toString();
   const destinationId = new Types.ObjectId().toString();
   const session = {
@@ -12,6 +12,7 @@ describe('TransfersService', () => {
   };
   const model = { create: jest.fn() };
   const snapshots = {
+    balanceForBudget: jest.fn().mockResolvedValue(100000),
     prepareForBudget: jest.fn(),
     applyForBudget: jest.fn(),
   };
@@ -38,7 +39,6 @@ describe('TransfersService', () => {
     destinationAmount: 1000,
     transactionDate: '2026-09-01T00:00:00.000Z',
   };
-
   beforeEach(() => {
     jest.clearAllMocks();
     transactions.accountForCreate
@@ -68,14 +68,16 @@ describe('TransfersService', () => {
     };
     model.create.mockResolvedValue([{ toObject: () => transfer }]);
   });
-
   it('applies both actual cross-currency effects atomically', async () => {
-    const result = await service.create(userId, dto);
+    const result = await service.createForBudget(
+      budget,
+      userId,
+      dto,
+      session as never,
+    );
     expect(transactions.lockAccountsForBudget).toHaveBeenCalledWith(
       {
-        ownerType: 'user',
-        ownerId: new Types.ObjectId(userId),
-        userId: new Types.ObjectId(userId),
+        spaceId: new Types.ObjectId(userId),
       },
       [sourceId, destinationId],
       session as unknown as ClientSession,
@@ -100,7 +102,6 @@ describe('TransfersService', () => {
       rate: 1 / 90,
     });
   });
-
   it('rejects unequal same-currency effects without creating a record', async () => {
     transactions.accountForCreate
       .mockReset()
@@ -113,24 +114,32 @@ describe('TransfersService', () => {
         currency: 'RUB',
       });
     await expect(
-      service.create(userId, {
-        ...dto,
-        sourceAmount: 1000,
-        destinationAmount: 999,
-      }),
+      service.createForBudget(
+        budget,
+        userId,
+        {
+          ...dto,
+          sourceAmount: 1000,
+          destinationAmount: 999,
+        },
+        session as never,
+      ),
     ).rejects.toBeInstanceOf(BadRequestException);
     expect(model.create).not.toHaveBeenCalled();
   });
-
   it('rejects a transfer to the same account before starting a transaction', async () => {
     await expect(
-      service.create(userId, { ...dto, destinationAccountId: sourceId }),
+      service.createForBudget(
+        budget,
+        userId,
+        { ...dto, destinationAccountId: sourceId },
+        session as never,
+      ),
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 });
-
 describe('TransfersService budget mutations', () => {
-  const budget = { ownerType: 'group' as const, ownerId: new Types.ObjectId() };
+  const budget = { spaceId: new Types.ObjectId() };
   const actor = new Types.ObjectId().toString();
   const source = { _id: new Types.ObjectId(), ...budget, currency: 'RUB' };
   const destination = { _id: new Types.ObjectId(), ...budget, currency: 'USD' };
@@ -179,7 +188,12 @@ describe('TransfersService budget mutations', () => {
       session: () => ({ lean: () => ({ exec: async () => stored }) }),
     });
     model.findOneAndUpdate.mockImplementation(
-      (_filter: object, changes: { $set: Record<string, unknown> }) => {
+      (
+        _filter: object,
+        changes: {
+          $set: Record<string, unknown>;
+        },
+      ) => {
         const updated = {
           ...stored,
           source: {
@@ -242,7 +256,7 @@ describe('TransfersService budget mutations', () => {
       session,
     );
   });
-  it('rejects the same group account when ObjectId hex casing differs', async () => {
+  it('rejects the same space account when ObjectId hex casing differs', async () => {
     await expect(
       service.createForBudget(
         budget,
@@ -254,7 +268,6 @@ describe('TransfersService budget mutations', () => {
     expect(transactions.lockAccountsForBudget).not.toHaveBeenCalled();
     expect(model.create).not.toHaveBeenCalled();
   });
-
   it('rejects insufficient historical funds before creating snapshots or a transfer', async () => {
     snapshots.balanceForBudget.mockResolvedValue(99.99);
     await expect(
@@ -263,9 +276,8 @@ describe('TransfersService budget mutations', () => {
     expect(snapshots.prepareForBudget).not.toHaveBeenCalled();
     expect(model.create).not.toHaveBeenCalled();
   });
-
   it.each([0, -1, 0.0001, Infinity, NaN, 1.001])(
-    'rejects invalid group source amount %s',
+    'rejects invalid space source amount %s',
     async (sourceAmount) => {
       await expect(
         service.createForBudget(
@@ -278,7 +290,6 @@ describe('TransfersService budget mutations', () => {
       expect(model.create).not.toHaveBeenCalled();
     },
   );
-
   it('only requires the normalized extra debit and saves before rebuilding both sides', async () => {
     snapshots.balanceForBudget.mockResolvedValue(0.01);
     await service.updateForBudget(
@@ -303,7 +314,6 @@ describe('TransfersService budget mutations', () => {
       snapshots.applyForBudget.mock.invocationCallOrder[0],
     );
   });
-
   it.each([{ sourceAmount: 99 }, { description: 'Historical correction' }])(
     'does not recheck funds for reduction or description only: %p',
     async (changes) => {
@@ -316,7 +326,6 @@ describe('TransfersService budget mutations', () => {
       expect(snapshots.balanceForBudget).not.toHaveBeenCalled();
     },
   );
-
   it('marks cancellation before rebuilding and allows a spent destination', async () => {
     await service.deleteForBudget(budget, actor, String(stored._id), session);
     expect(snapshots.balanceForBudget).not.toHaveBeenCalled();

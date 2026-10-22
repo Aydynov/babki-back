@@ -1,0 +1,28 @@
+$kind: http-request
+name: 'GET /spaces/:spaceId/expense-limits'
+description: |
+  Source: src/modules/space-finances/space-finances.controller.ts
+url: '{{base_url}}/spaces/{{space_id}}/expense-limits'
+method: GET
+headers:
+  Accept: application/json
+queryParams:
+  - key: currency
+    value: '{{currency}}'
+    disabled: true
+    description: Optional; enable when needed
+  - key: categoryId
+    value: '{{space_category_id}}'
+    disabled: true
+    description: Optional; enable when needed
+  - key: periodDate
+    value: '{{now}}'
+    disabled: true
+    description: Optional; enable when needed
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('HTTP 200', () => pm.response.to.have.status(200));
+      pm.test('JSON response', () => pm.response.to.be.json);
+    language: text/javascript
+order: 39000

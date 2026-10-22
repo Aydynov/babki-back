@@ -5,13 +5,11 @@ import {
   Transaction,
   TransactionSchema,
 } from '../transactions/schemas/transaction.schema';
+import { AccountsSnapshotsService } from './accounts-snapshots.service';
 import {
   AccountSnapshot,
   AccountsSnapshotsSchema,
 } from './schemas/accounts-snapshots.schema';
-import { AccountsSnapshotsController } from './accounts-snapshots.controller';
-import { AccountsSnapshotsService } from './accounts-snapshots.service';
-
 @Module({
   imports: [
     MongooseModule.forFeature([
@@ -20,7 +18,7 @@ import { AccountsSnapshotsService } from './accounts-snapshots.service';
       { name: Transaction.name, schema: TransactionSchema },
     ]),
   ],
-  controllers: [AccountsSnapshotsController],
+  controllers: [],
   providers: [AccountsSnapshotsService],
   exports: [MongooseModule, AccountsSnapshotsService],
 })

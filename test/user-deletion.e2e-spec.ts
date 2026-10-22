@@ -1,10 +1,10 @@
 import { Types } from 'mongoose';
 import request, { Response } from 'supertest';
 import { UserDeletionWorker } from '../src/modules/users/user-deletion.service';
-import { startGroupsTestApp } from './helpers/groups-test-app';
+import { startSpacesTestApp } from './helpers/spaces-test-app';
 
 describe('User deletion (real MongoDB replica set)', () => {
-  let harness: Awaited<ReturnType<typeof startGroupsTestApp>>;
+  let harness: Awaited<ReturnType<typeof startSpacesTestApp>>;
   let sequence = 0;
   const password = 'test-only-correct-horse-battery';
   const oid = (value: string) => new Types.ObjectId(value);
@@ -25,7 +25,6 @@ describe('User deletion (real MongoDB replica set)', () => {
         lastName: 'Me',
         email,
         password,
-        currency: 'USD',
       })
       .expect(201);
     const body = response.body as {
@@ -46,7 +45,7 @@ describe('User deletion (real MongoDB replica set)', () => {
   });
 
   beforeAll(async () => {
-    harness = await startGroupsTestApp();
+    harness = await startSpacesTestApp();
   }, 60000);
 
   beforeEach(async () => {
@@ -62,11 +61,9 @@ describe('User deletion (real MongoDB replica set)', () => {
     await harness?.close();
   }, 30000);
 
-  it('rejects deletion while the user owns an active group', async () => {
+  it('rejects deletion while the user owns an active space', async () => {
     const user = await register();
-    await asUser(user.token)
-      .post('/groups', { name: 'Owned', type: 'family' })
-      .expect(201);
+    await asUser(user.token).post('/spaces', { name: 'Owned' }).expect(201);
 
     await asUser(user.token)
       .post('/auth/account-deletion', { password })
@@ -82,50 +79,24 @@ describe('User deletion (real MongoDB replica set)', () => {
     ).toBe(0);
   });
 
-  it('revokes access immediately and produces a PII-free tombstone without deleting group history', async () => {
+  it('revokes access immediately and produces a PII-free tombstone without deleting space history', async () => {
     const user = await register();
     const personal = asUser(user.token);
-    const account = idOf(
-      await personal
-        .post('/accounts', {
-          name: 'Personal balance',
-          type: 'balance',
-          currency: 'USD',
-          amount: 100,
-        })
-        .expect(201),
-    );
-    const category = idOf(
-      await personal
-        .post('/expense-categories', { name: 'Personal' })
-        .expect(201),
-    );
-    await personal
-      .post('/expenses', {
-        accountId: account,
-        categoryId: category,
-        amount: 10,
-        transactionDate: '2026-09-21',
-      })
-      .expect(201);
-
     const owner = asUser(harness.users[0].token);
-    const groupId = idOf(
-      await owner
-        .post('/groups', { name: 'History', type: 'family' })
-        .expect(201),
+    const spaceId = idOf(
+      await owner.post('/spaces', { name: 'History' }).expect(201),
     );
     const invitation = await owner
-      .post(`/groups/${groupId}/invitations`)
+      .post(`/spaces/${spaceId}/invitations`)
       .expect(201);
     await personal
-      .post('/group-invitations/accept', {
+      .post('/space-invitations/accept', {
         token: (invitation.body as { token: string }).token,
       })
       .expect(200);
     const groupAccount = idOf(
       await owner
-        .post(`/groups/${groupId}/accounts`, {
+        .post(`/spaces/${spaceId}/accounts`, {
           name: 'Family',
           currency: 'USD',
           amount: 100,
@@ -134,12 +105,12 @@ describe('User deletion (real MongoDB replica set)', () => {
     );
     const groupCategory = idOf(
       await owner
-        .post(`/groups/${groupId}/expense-categories`, { name: 'Shared' })
+        .post(`/spaces/${spaceId}/expense-categories`, { name: 'Shared' })
         .expect(201),
     );
     const groupExpense = idOf(
       await owner
-        .post(`/groups/${groupId}/expenses`, {
+        .post(`/spaces/${spaceId}/expenses`, {
           accountId: groupAccount,
           categoryId: groupCategory,
           participantId: user.id,
@@ -148,6 +119,40 @@ describe('User deletion (real MongoDB replica set)', () => {
         })
         .expect(201),
     );
+    // Financial facts in a deleted sole-owner space must survive as well.
+    const deletedSpaceId = new Types.ObjectId();
+    await collection('spaces').insertOne({
+      _id: deletedSpaceId,
+      name: 'Former sole-owner space',
+      ownerId: oid(user.id),
+      deletedAt: new Date(),
+    });
+    const retainedCollections = [
+      'accounts',
+      'transactions',
+      'expensecategories',
+      'expenselimits',
+      'plans',
+      'debts',
+      'debttransactions',
+    ];
+    const retainedDocuments = await Promise.all(
+      retainedCollections.map(async (name) => {
+        const document = {
+          _id: new Types.ObjectId(),
+          spaceId: deletedSpaceId,
+          createdBy: oid(user.id),
+          participantId: oid(user.id),
+        };
+        await collection(name).insertOne(document);
+        return { name, document };
+      }),
+    );
+    const retainedSnapshot = {
+      _id: new Types.ObjectId(),
+      accountId: retainedDocuments[0].document._id,
+    };
+    await collection('accountsnapshots').insertOne(retainedSnapshot);
     await collection('authchallenges').insertOne({
       userId: oid(user.id),
       tokenDigest: `challenge-${sequence}`,
@@ -177,20 +182,8 @@ describe('User deletion (real MongoDB replica set)', () => {
     const worker = harness.app.get(UserDeletionWorker);
     await expect(worker.diagnose(user.id)).resolves.toMatchObject({
       memberships: 1,
-      personalFinance: {
-        transactions: 1,
-        accounts: 1,
-        categories: 1,
-      },
       authData: { challenges: 1, twoFactor: 1, auditEvents: 1 },
     });
-    expect(
-      await collection('transactions').countDocuments({
-        ownerType: 'user',
-        ownerId: oid(user.id),
-      }),
-    ).toBe(1);
-
     await personal.post('/auth/account-deletion', { password }).expect(202);
     await personal.get('/users/me').expect(401);
     await request(server())
@@ -198,36 +191,43 @@ describe('User deletion (real MongoDB replica set)', () => {
       .send({ email: user.email, password })
       .expect(401);
 
-    for (let stage = 0; stage < 4; stage += 1) {
+    for (let stage = 0; stage < 3; stage += 1) {
       await expect(worker.runOnce('e2e-worker')).resolves.toBe(true);
     }
     await expect(worker.runOnce('e2e-worker')).resolves.toBe(false);
 
+    for (const { name, document } of retainedDocuments) {
+      expect(await collection(name).findOne({ _id: document._id })).toEqual(
+        document,
+      );
+    }
     expect(
-      await collection('transactions').countDocuments({
-        ownerType: 'user',
-        ownerId: oid(user.id),
+      await collection('accountsnapshots').findOne({
+        _id: retainedSnapshot._id,
       }),
-    ).toBe(0);
+    ).toEqual(retainedSnapshot);
     expect(
-      await collection('accounts').findOne({ _id: oid(account) }),
-    ).toBeNull();
+      await collection('accounts').findOne({ _id: oid(groupAccount) }),
+    ).not.toBeNull();
     expect(
       await collection('transactions').findOne({ _id: oid(groupExpense) }),
-    ).toMatchObject({ participantId: oid(user.id), ownerType: 'group' });
+    ).toMatchObject({ participantId: oid(user.id), spaceId: oid(spaceId) });
     expect(
-      await collection('groupmemberships').findOne({
-        groupId: oid(groupId),
+      await collection('spacememberships').findOne({
+        spaceId: oid(spaceId),
         userId: oid(user.id),
       }),
     ).toMatchObject({ status: 'removed', endReason: 'user_deleted' });
     expect(
       await collection('userdeletionjobs').findOne({ userId: oid(user.id) }),
-    ).toMatchObject({ stage: 'completed', completedAt: expect.any(Date) });
+    ).toMatchObject({
+      stage: 'completed',
+      completedAt: expect.any(Date) as unknown,
+    });
     const tombstone = await collection('users').findOne({ _id: oid(user.id) });
     expect(tombstone).toMatchObject({
       status: 'deleted',
-      deletedAt: expect.any(Date),
+      deletedAt: expect.any(Date) as unknown,
     });
     for (const field of [
       'firstName',
@@ -254,8 +254,7 @@ describe('User deletion (real MongoDB replica set)', () => {
   });
 
   it.each([
-    ['memberships', 'groupmemberships', 'updateMany'],
-    ['personal_finance', 'transactions', 'deleteMany'],
+    ['memberships', 'spacememberships', 'updateMany'],
     ['auth_data', 'authchallenges', 'deleteMany'],
     ['tombstone', 'users', 'updateOne'],
   ] as const)(
@@ -316,8 +315,10 @@ describe('User deletion (real MongoDB replica set)', () => {
       completedAt: null,
     });
     const worker = harness.app.get(UserDeletionWorker);
-    const memberships = collection('groupmemberships');
-    const originalUpdateMany = memberships.updateMany.bind(memberships);
+    const memberships = collection('spacememberships');
+    const originalUpdateMany = memberships.updateMany.bind(
+      memberships,
+    ) as typeof memberships.updateMany;
     let release!: () => void;
     let started!: () => void;
     const startedPromise = new Promise<void>((resolve) => {

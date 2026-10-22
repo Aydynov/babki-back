@@ -1,0 +1,13 @@
+$kind: http-request
+name: Registration starts without spaces
+url: '{{base_url}}/spaces'
+method: GET
+headers:
+  Accept: application/json
+order: 1500
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('HTTP 200', () => pm.response.to.have.status(200));
+      pm.test('No automatic space', () => pm.expect(pm.response.json().items).to.deep.equal([]));

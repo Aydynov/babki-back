@@ -7,10 +7,8 @@ import {
 } from '../expense-categories/schemas/expense-category.schema';
 import { TransactionsModule } from '../transactions/transactions.module';
 import { User, UserSchema } from '../users/schemas/user.schema';
-import { Plan, PlanSchema } from './schemas/plan.schema';
-import { PlansController } from './plans.controller';
 import { PlansService } from './plans.service';
-
+import { Plan, PlanSchema } from './schemas/plan.schema';
 @Module({
   imports: [
     TransactionsModule,
@@ -20,13 +18,15 @@ import { PlansService } from './plans.service';
       { name: ExpenseCategory.name, schema: ExpenseCategorySchema },
     ]),
   ],
-  controllers: [PlansController],
+  controllers: [],
   providers: [PlansService],
   exports: [PlansService, MongooseModule],
 })
 export class PlansModule implements OnModuleInit {
-  constructor(@InjectModel(Plan.name) private readonly plans: Model<Plan>) {}
-
+  constructor(
+    @InjectModel(Plan.name)
+    private readonly plans: Model<Plan>,
+  ) {}
   async onModuleInit() {
     await this.plans.createIndexes();
   }

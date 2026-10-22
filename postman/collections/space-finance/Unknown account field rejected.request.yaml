@@ -1,0 +1,25 @@
+$kind: http-request
+description: |-
+  Source: src/modules/accounts/accounts/accounts.controller.ts
+  Optional body fields: amount, openedAt
+url: '{{base_url}}/spaces/{{space_id}}/accounts'
+method: POST
+headers:
+  Accept: application/json
+  Content-Type: application/json
+body:
+  type: json
+  content: |-
+    {
+      "name": "Invalid",
+      "type": "balance",
+      "currency": "RUB",
+      "unexpected": true
+    }
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('Unknown field rejected', () => pm.response.to.have.status(400));
+      pm.test('Validation details', () => {const e=pm.response.json(); pm.expect(e.statusCode).to.equal(400); pm.expect(e.message.join(' ')).to.include('unexpected');});
+    language: text/javascript
+order: 3000

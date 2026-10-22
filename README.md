@@ -1,6 +1,6 @@
 # babki-back
 
-`babki-back` is a NestJS + TypeScript REST API for personal-finance data, backed by MongoDB via Mongoose. The codebase exposes versioned, JWT-protected endpoints for accounts, transactions, expense tracking, debt management, spending plans, and monthly/yearly summaries.
+`babki-back` is a NestJS + TypeScript REST API for space-scoped financial data, backed by MongoDB via Mongoose. The codebase exposes versioned, JWT-protected endpoints for accounts, transactions, expense tracking, debt management, spending plans, and monthly/yearly summaries.
 
 ## What Is In The Repo
 
@@ -10,7 +10,7 @@ The application currently contains these functional areas:
 - `users`: profile read and update for the authenticated user
 - `accounts`: base schema with two discriminators — `balance` and `saving`
 - `accounts-snapshots`: one snapshot per account per month, tracks account balance over time
-- `transactions`: personal `expense`, `income`, and atomic same-/cross-currency `transfer` operations
+- `transactions`: space-scoped `expense`, `income`, and atomic same-/cross-currency `transfer` operations
 - `expense-categories`: shared category list, user-scoped
 - `expense-limits`: per-category spending limits enriched with a `rest` field (limit total minus actual spend)
 - `debts`: debt tracking with principal and remaining amounts
@@ -44,7 +44,7 @@ Every endpoint requires a valid JWT Bearer token except registration and the two
 
 **Flow:**
 
-1. `POST /auth/register` — create an account with email, password, first/last name, and `currency` (stored as `defaultCurrency`)
+1. `POST /auth/register` — create an account with email, password, first/last name, without currency or financial defaults
 2. `POST /auth/login` — authenticate and receive `{ accessToken, user }` when 2FA is disabled
 3. When 2FA is enabled, the password step instead returns `{ requiresTwoFactor, challengeToken, expiresAt }`; complete it at `POST /auth/login/two-factor` with a TOTP or recovery code
 4. Include the resulting token on subsequent requests: `Authorization: Bearer <accessToken>`
@@ -150,16 +150,16 @@ Make sure MongoDB is reachable with the configured host, port, credentials, and 
 NODE_ENV=development npm run seed
 ```
 
-Populates the database with five test users (password `Test1234!`), personal
-and group budgets, rolling transaction history, limits, debts and plans. The
+Populates the database with five test users (password `Test1234!`), space-scoped
+and shared spaces, rolling transaction history, limits, debts and plans. The
 fixtures also include deletable, archived, soft-deleted and deletion-restricted
 records for entity lifecycle testing. The main user has RUB/USD balance and
 saving accounts, currency-specific operations, and same-/cross-currency
 transfers. Use `delete-me@test.com` for account
-deletion tests; it owns no active group. The command prints the important
-fixture identifiers and the pending group invitation token.
+deletion tests; it owns no active space. The command prints the important
+fixture identifiers and the pending space invitation token.
 
-See [the seed scenario catalogue](docs/group-finances-seed.md) for details.
+See [the seed scenario catalogue](docs/space-finances-seed.md) for details.
 
 Only works when `NODE_ENV=development`.
 
@@ -234,97 +234,13 @@ GET   /users/me
 PATCH /users/me
 ```
 
-### Accounts
+### Spaces and finances
 
-```
-POST   /accounts
-GET    /accounts
-GET    /accounts/:accountId
-PATCH  /accounts/:accountId
-DELETE /accounts/:accountId
-POST   /accounts/:accountId/archive
-GET    /accounts/:accountId/snapshots
-```
+Create/list spaces at `/spaces`; membership, ownership and invitations use `/spaces/:spaceId`. Token preview/accept use `/space-invitations`. See [spaces and invitations](docs/spaces-api.md).
 
-### Transactions
+All financial CRUD is below `/spaces/:spaceId`: accounts, incomes, expenses, transfers, transactions, expense-categories, expense-limits, plans, debts and reports. Financial operation IDs remain in their domain routes; debt history uses `/debts/:id/repayments`, including `/:repaymentId/cancel`. Financial responses use spaceId. Snapshot HTTP is read-only through accounts. Root financial and old group routes return 404.
 
-```
-POST  /expenses
-GET   /expenses
-GET   /expenses/:expenseId
-PATCH /expenses/:expenseId
-
-POST  /incomes
-GET   /incomes
-GET   /incomes/:incomeId
-PATCH /incomes/:incomeId
-
-POST   /transfers
-GET    /transfers
-GET    /transfers/:transferId
-PATCH  /transfers/:transferId
-DELETE /transfers/:transferId
-
-GET    /transactions
-GET    /transactions/:transactionId
-DELETE /transactions/:transactionId
-```
-
-Personal income and expense creation requires `accountId`; the selected active
-account determines the operation currency. Reports return independent currency
-buckets and never convert or add unlike currencies. See
-[the multicurrency API notes](docs/multicurrency-api.md).
-
-### Expense categories and limits
-
-```
-POST   /expense-categories
-GET    /expense-categories
-GET    /expense-categories/:categoryId
-PATCH  /expense-categories/:categoryId
-DELETE /expense-categories/:categoryId
-
-POST   /expense-limits
-GET    /expense-limits
-GET    /expense-limits/:limitId
-PATCH  /expense-limits/:limitId
-DELETE /expense-limits/:limitId
-```
-
-### Debts
-
-```
-POST   /debts
-GET    /debts
-GET    /debts/:debtId
-PATCH  /debts/:debtId
-DELETE /debts/:debtId
-POST   /debts/:debtId/archive
-POST   /debts/:debtId/repayments
-GET    /debts/:debtId/transactions
-GET    /debts/:debtId/transactions/:debtTransactionId
-```
-
-### Plans
-
-```
-POST   /plans
-GET    /plans
-GET    /plans/:planId
-PATCH  /plans/:planId
-DELETE /plans/:planId
-POST   /plans/:planId/archive
-POST   /plans/:planId/close
-```
-
-### Reports
-
-```
-GET /reports/months
-GET /reports/years
-```
-
-`/reports/months` and `/reports/years` return `PeriodReport[]` containing period, expenses, incomes, saves, balance, saving, and expensesByCategory. Both accept `categories` as a comma-separated string or a repeated query parameter.
+Account currency is explicit; operations inherit it and reports return independent currency baskets. See [financial routes and rules](docs/space-finances-api.md), [currency notes](docs/multicurrency-api.md) and the [local OpenAPI/Postman contract](postman/README.md).
 
 ## Architecture Notes
 
@@ -336,26 +252,11 @@ HTTP request → JwtAuthGuard → controller → service → Mongoose model → 
 
 Data relationships:
 
-- users are authenticated via JWT; there is no `:userId` route parameter — all data is scoped to the token's subject
-- accounts (`balance` / `saving`) are owned by users via Mongoose discriminator pattern
-- transactions (`expense` / `income` / `save`) reference `userId`, `accountId`, and `snapshotId`
-- each transaction write requires a matching monthly `AccountSnapshot` (snapshot invariant); services call `findOrCreateByAccountId` before creating a transaction, then `recalculateSnapshotsFromDate` to propagate the amount delta forward
-- `save` transactions move money between accounts — they debit the source `balance` and credit the `saving`; both snapshot chains are updated atomically in a single session
-- expenses reference `categoryId`; plans reference `categoryId` and optionally link a closed expense via `expenseId`
-- reports aggregate across all transaction types
-
-Discriminator pattern: both `Account` and `Transaction` use Mongoose discriminators with `discriminatorKey: 'type'`. The base schema is registered first; sub-types are registered as discriminators in each module's `MongooseModule.forFeature` call.
-
-Multi-document atomicity: services that touch more than one collection inject `@InjectConnection()` and wrap writes in `session.withTransaction()`. MongoDB must be running as a replica set for this to work.
-
-Caller-managed sessions: `ExpensesService.create` and `IncomesService.create` accept an optional `ClientSession`. When a session is provided they join the caller's transaction; when omitted they self-manage. Use this pattern when combining expense/income creation with writes to another collection (for example, `PlansService.close`).
-
-Not found in repo:
-
-- background jobs or queues
-- caching layer
-- external API integrations
-- migration tooling
+- JWT identifies the actor; current space membership and delegated rights authorize financial requests.
+- Accounts and financial documents use immutable spaceId. Account/transaction discriminators remain balance/saving and income/expense/transfer.
+- Snapshots inherit the space through accountId; shared services update monetary effects in a single MongoDB transaction.
+- Author, participant and member references identify users independently of financial ownership. User deletion preserves space financial history and anonymizes actors.
+- Plans retain immutable generated expense origins; financial debt repayments retain exact linked income IDs and compensate once on cancellation.
 
 ## Docker Workflow
 

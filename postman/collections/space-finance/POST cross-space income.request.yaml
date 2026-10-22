@@ -1,0 +1,21 @@
+$kind: http-request
+name: Other space cannot credit account
+url: '{{base_url}}/spaces/{{other_space_id}}/incomes'
+method: POST
+headers:
+  Accept: application/json
+  Content-Type: application/json
+order: 8700
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |
+      pm.test('HTTP 404', () => pm.response.to.have.status(404));
+body:
+  type: json
+  content: |-
+    {
+      "accountId": "{{account_id}}",
+      "amount": 1,
+      "transactionDate": "{{now}}"
+    }

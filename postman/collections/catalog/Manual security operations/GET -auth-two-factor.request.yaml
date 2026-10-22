@@ -2,7 +2,7 @@ $kind: http-request
 name: GET /auth/two-factor
 description: |
   Source: src/modules/auth/auth.controller.ts
-url: "{{base_url}}/auth/two-factor"
+url: '{{base_url}}/auth/two-factor'
 method: GET
 headers:
   Accept: application/json

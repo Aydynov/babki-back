@@ -2,33 +2,16 @@ import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument, Schema as MongooseSchema, Types } from 'mongoose';
 import { Debt } from '../../debts/schemas/debt.schema';
 import { User } from '../../users/schemas/user.schema';
-
 export type DebtTransactionDocument = HydratedDocument<DebtTransaction>;
-
 @Schema({ timestamps: true })
 export class DebtTransaction {
   @Prop({
-    type: MongooseSchema.Types.ObjectId,
-    ref: User.name,
-    immutable: true,
-  })
-  userId?: Types.ObjectId;
-
-  @Prop({
-    required: true,
-    type: String,
-    enum: ['user', 'group'],
-    immutable: true,
-  })
-  ownerType: 'user' | 'group';
-
-  @Prop({
     required: true,
     type: MongooseSchema.Types.ObjectId,
     immutable: true,
+    ref: 'Space',
   })
-  ownerId: Types.ObjectId;
-
+  spaceId: Types.ObjectId;
   @Prop({
     required: true,
     type: MongooseSchema.Types.ObjectId,
@@ -36,45 +19,32 @@ export class DebtTransaction {
     immutable: true,
   })
   createdBy: Types.ObjectId;
-
   @Prop({ required: true, type: MongooseSchema.Types.ObjectId, ref: Debt.name })
   debtId: Types.ObjectId;
-
   @Prop({ required: true, min: 0 })
   amount: number;
-
   @Prop({ required: true })
   transactionDate: Date;
-
   @Prop({ type: Boolean })
   isIncome?: boolean;
-
   @Prop({ type: MongooseSchema.Types.ObjectId, immutable: true })
   incomeId?: Types.ObjectId;
-
   @Prop({ type: Date })
   cancelledAt?: Date | null;
-
   @Prop({ type: MongooseSchema.Types.ObjectId, ref: User.name })
   cancelledBy?: Types.ObjectId;
-
   @Prop({ trim: true })
   description?: string;
 }
-
 export const DebtTransactionSchema =
   SchemaFactory.createForClass(DebtTransaction);
-
 DebtTransactionSchema.index({
   debtId: 1,
   transactionDate: -1,
   createdAt: -1,
 });
-DebtTransactionSchema.index({ userId: 1 });
-
 DebtTransactionSchema.index({
-  ownerType: 1,
-  ownerId: 1,
+  spaceId: 1,
   debtId: 1,
   transactionDate: -1,
   createdAt: -1,

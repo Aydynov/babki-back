@@ -6,7 +6,6 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { mongo } from 'mongoose';
-
 /** Starts a disposable database, never connects to a developer/production DB. */
 export async function startTestReplicaSet() {
   const probe = createServer();
@@ -18,7 +17,7 @@ export async function startTestReplicaSet() {
   await new Promise<void>((resolve, reject) =>
     probe.close((error) => (error ? reject(error) : resolve())),
   );
-  const directory = await mkdtemp(join(tmpdir(), 'babki-groups-mongo-'));
+  const directory = await mkdtemp(join(tmpdir(), 'babki-spaces-mongo-'));
   const child = spawn(
     process.env.MONGOD_BINARY ?? 'mongod',
     [
@@ -63,7 +62,7 @@ export async function startTestReplicaSet() {
     await rm(directory, { recursive: true, force: true });
   }
   try {
-    const deadline = Date.now() + 30_000;
+    const deadline = Date.now() + 30000;
     while (true) {
       if (startError) throw startError;
       if (child.exitCode !== null) throw new Error(`mongod exited: ${output}`);
@@ -92,7 +91,7 @@ export async function startTestReplicaSet() {
     await client.close();
     return {
       port,
-      uri: `mongodb://127.0.0.1:${port}/babki_groups_test?replicaSet=babki_test&directConnection=true`,
+      uri: `mongodb://127.0.0.1:${port}/babki_spaces_test?replicaSet=babki_test&directConnection=true`,
       close,
     };
   } catch (error) {

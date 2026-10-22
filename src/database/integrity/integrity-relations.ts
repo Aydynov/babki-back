@@ -7,20 +7,25 @@ export type IntegrityRelation = {
   targetFilter?: Record<string, unknown>;
   required?: boolean;
   sameBudget?: boolean;
+  snapshotAccountField?: string;
   planOrigin?: boolean;
   expenseOrigin?: boolean;
   debtCheck?: 'balance' | 'repayment-income' | 'income-repayment';
 };
-
 export const integrityRelations: IntegrityRelation[] = [
   {
     id: 'transaction.account',
+    sourceFilter: { type: { $in: ['income', 'expense'] } },
+    required: true,
+    sameBudget: true,
     sourceModel: 'Transaction',
     sourceField: 'accountId',
     targetModel: 'Account',
   },
   {
     id: 'transfer.sourceAccount',
+    required: true,
+    sameBudget: true,
     sourceModel: 'Transaction',
     sourceField: 'source.accountId',
     targetModel: 'Account',
@@ -28,6 +33,8 @@ export const integrityRelations: IntegrityRelation[] = [
   },
   {
     id: 'transfer.destinationAccount',
+    required: true,
+    sameBudget: true,
     sourceModel: 'Transaction',
     sourceField: 'destination.accountId',
     targetModel: 'Account',
@@ -35,6 +42,8 @@ export const integrityRelations: IntegrityRelation[] = [
   },
   {
     id: 'transfer.sourceSnapshot',
+    required: true,
+    snapshotAccountField: 'source.accountId',
     sourceModel: 'Transaction',
     sourceField: 'source.snapshotId',
     targetModel: 'AccountSnapshot',
@@ -42,25 +51,26 @@ export const integrityRelations: IntegrityRelation[] = [
   },
   {
     id: 'transfer.destinationSnapshot',
+    required: true,
+    snapshotAccountField: 'destination.accountId',
     sourceModel: 'Transaction',
     sourceField: 'destination.snapshotId',
     targetModel: 'AccountSnapshot',
     sourceFilter: { type: 'transfer' },
   },
   {
-    id: 'user.defaultAccount',
-    sourceModel: 'User',
-    sourceField: 'defaultAccountId',
-    targetModel: 'Account',
-  },
-  {
     id: 'transaction.snapshot',
+    sourceFilter: { type: { $in: ['income', 'expense'] } },
+    required: true,
+    snapshotAccountField: 'accountId',
     sourceModel: 'Transaction',
     sourceField: 'snapshotId',
     targetModel: 'AccountSnapshot',
   },
   {
     id: 'expense.category',
+    required: true,
+    sameBudget: true,
     sourceModel: 'Transaction',
     sourceField: 'category',
     targetModel: 'ExpenseCategory',
@@ -68,18 +78,23 @@ export const integrityRelations: IntegrityRelation[] = [
   },
   {
     id: 'limit.category',
+    required: true,
+    sameBudget: true,
     sourceModel: 'ExpenseLimit',
     sourceField: 'category',
     targetModel: 'ExpenseCategory',
   },
   {
     id: 'plan.category',
+    required: true,
+    sameBudget: true,
     sourceModel: 'Plan',
     sourceField: 'categoryId',
     targetModel: 'ExpenseCategory',
   },
   {
     id: 'plan.expense',
+    sameBudget: true,
     sourceModel: 'Plan',
     sourceField: 'expenseId',
     targetModel: 'Transaction',
@@ -87,19 +102,32 @@ export const integrityRelations: IntegrityRelation[] = [
   },
   {
     id: 'debtTransaction.debt',
+    required: true,
+    sameBudget: true,
     sourceModel: 'DebtTransaction',
     sourceField: 'debtId',
     targetModel: 'Debt',
   },
   {
     id: 'snapshot.account',
+    required: true,
     sourceModel: 'AccountSnapshot',
     sourceField: 'accountId',
     targetModel: 'Account',
   },
-  ...userRelations(),
-  ...groupRelations(),
-  ...ownerRelations(),
+  ...['Account', 'Transaction', 'ExpenseCategory', 'ExpenseLimit'].flatMap(
+    (sourceModel) =>
+      ['createdBy', 'deletedBy', 'participantId'].map((sourceField) =>
+        relation(
+          `${sourceModel}.${sourceField}`,
+          sourceModel,
+          sourceField,
+          'User',
+        ),
+      ),
+  ),
+  ...spaceRelations(),
+  ...spaceReferences(),
   ...debtRelations(),
   {
     id: 'expense.plan.origin',
@@ -155,37 +183,18 @@ export const integrityRelations: IntegrityRelation[] = [
     required: true,
   },
 ];
-
-function userRelations(): IntegrityRelation[] {
+function spaceRelations(): IntegrityRelation[] {
   return [
-    ['account.user', 'Account', 'userId'],
-    ['plan.user', 'Plan', 'userId'],
-    ['debt.user', 'Debt', 'userId'],
-    ['debtTransaction.user', 'DebtTransaction', 'userId'],
-    ['category.user', 'ExpenseCategory', 'userId'],
-    ['limit.user', 'ExpenseLimit', 'userId'],
-    ['transaction.user', 'Transaction', 'userId'],
-  ].map(([id, sourceModel, sourceField]) => ({
-    id,
-    sourceModel,
-    sourceField,
-    targetModel: 'User',
-  }));
-}
-
-function groupRelations(): IntegrityRelation[] {
-  return [
-    relation('group.owner', 'Group', 'ownerId', 'User'),
-    relation('membership.group', 'GroupMembership', 'groupId', 'Group'),
-    relation('membership.user', 'GroupMembership', 'userId', 'User'),
-    relation('invitation.group', 'GroupInvitation', 'groupId', 'Group'),
-    relation('invitation.createdBy', 'GroupInvitation', 'createdBy', 'User'),
-    relation('invitation.acceptedBy', 'GroupInvitation', 'acceptedBy', 'User'),
-    relation('invitation.revokedBy', 'GroupInvitation', 'revokedBy', 'User'),
+    relation('space.owner', 'Space', 'ownerId', 'User'),
+    relation('membership.space', 'SpaceMembership', 'spaceId', 'Space'),
+    relation('membership.user', 'SpaceMembership', 'userId', 'User'),
+    relation('invitation.space', 'SpaceInvitation', 'spaceId', 'Space'),
+    relation('invitation.createdBy', 'SpaceInvitation', 'createdBy', 'User'),
+    relation('invitation.acceptedBy', 'SpaceInvitation', 'acceptedBy', 'User'),
+    relation('invitation.revokedBy', 'SpaceInvitation', 'revokedBy', 'User'),
   ];
 }
-
-function ownerRelations(): IntegrityRelation[] {
+function spaceReferences(): IntegrityRelation[] {
   return [
     'Account',
     'ExpenseCategory',
@@ -194,40 +203,14 @@ function ownerRelations(): IntegrityRelation[] {
     'Plan',
     'Debt',
     'DebtTransaction',
-  ].flatMap((sourceModel) => {
-    const prefix =
-      sourceModel === 'ExpenseCategory'
-        ? 'category'
-        : sourceModel === 'ExpenseLimit'
-          ? 'limit'
-          : sourceModel === 'DebtTransaction'
-            ? 'debtTransaction'
-            : sourceModel.toLowerCase();
-    return [
-      {
-        id: `${prefix}.owner.user`,
-        sourceModel,
-        sourceField: 'ownerId',
-        targetModel: 'User',
-        sourceFilter: { ownerType: 'user' },
-        ...(['Plan', 'Debt', 'DebtTransaction'].includes(sourceModel)
-          ? { required: true }
-          : {}),
-      },
-      {
-        id: `${prefix}.owner.group`,
-        sourceModel,
-        sourceField: 'ownerId',
-        targetModel: 'Group',
-        sourceFilter: { ownerType: 'group' },
-        ...(['Plan', 'Debt', 'DebtTransaction'].includes(sourceModel)
-          ? { required: true }
-          : {}),
-      },
-    ];
-  });
+  ].map((sourceModel) => ({
+    id: `${sourceModel}.space`,
+    sourceModel,
+    sourceField: 'spaceId',
+    targetModel: 'Space',
+    required: true,
+  }));
 }
-
 function relation(
   id: string,
   sourceModel: string,
@@ -236,7 +219,6 @@ function relation(
 ): IntegrityRelation {
   return { id, sourceModel, sourceField, targetModel };
 }
-
 function debtRelations(): IntegrityRelation[] {
   return [
     {
@@ -258,7 +240,7 @@ function debtRelations(): IntegrityRelation[] {
       sourceModel: 'DebtTransaction',
       sourceField: 'cancelledBy',
       targetModel: 'User',
-      sourceFilter: { ownerType: 'group', cancelledAt: { $ne: null } },
+      sourceFilter: { cancelledAt: { $ne: null } },
       required: true,
     },
     {
@@ -267,11 +249,10 @@ function debtRelations(): IntegrityRelation[] {
       sourceField: 'debtId',
       targetModel: 'Debt',
       sameBudget: true,
-      sourceFilter: { ownerType: { $exists: true } },
       required: true,
     },
     {
-      id: 'debt.group.balance',
+      id: 'debt.space.balance',
       sourceModel: 'Debt',
       sourceField: 'remainingAmount',
       targetModel: 'DebtTransaction',

@@ -36,163 +36,198 @@
   "variable": [
     {
       "key": "currency",
-      "value": "RUB"
+      "value": "RUB",
+      "type": "string"
     },
     {
       "key": "now",
-      "value": ""
+      "value": "",
+      "type": "string"
     },
     {
       "key": "future_date",
-      "value": ""
+      "value": "",
+      "type": "string"
     },
     {
       "key": "from_date",
-      "value": ""
+      "value": "",
+      "type": "string"
     },
     {
       "key": "to_date",
-      "value": ""
+      "value": "",
+      "type": "string"
     },
     {
       "key": "run_id",
-      "value": ""
+      "value": "",
+      "type": "string"
     },
     {
       "key": "challenge_token",
-      "value": ""
+      "value": "",
+      "type": "string"
     },
     {
       "key": "second_factor_code",
-      "value": ""
+      "value": "",
+      "type": "string"
     },
     {
       "key": "invitation_token",
-      "value": ""
+      "value": "",
+      "type": "string"
     },
     {
       "key": "account_id",
-      "value": ""
+      "value": "",
+      "type": "string"
     },
     {
       "key": "category_id",
-      "value": ""
+      "value": "",
+      "type": "string"
     },
     {
-      "key": "group_account_id",
-      "value": ""
+      "key": "space_account_id",
+      "value": "",
+      "type": "string"
     },
     {
-      "key": "group_source_account_id",
-      "value": ""
+      "key": "space_source_account_id",
+      "value": "",
+      "type": "string"
     },
     {
-      "key": "group_destination_account_id",
-      "value": ""
+      "key": "space_destination_account_id",
+      "value": "",
+      "type": "string"
     },
     {
-      "key": "group_category_id",
-      "value": ""
+      "key": "space_category_id",
+      "value": "",
+      "type": "string"
     },
     {
       "key": "participant_id",
-      "value": ""
+      "value": "",
+      "type": "string"
     },
     {
-      "key": "group_categories",
-      "value": ""
+      "key": "space_categories",
+      "value": "",
+      "type": "string"
     },
     {
       "key": "user_id",
-      "value": ""
+      "value": "",
+      "type": "string"
     },
     {
       "key": "categories",
-      "value": ""
+      "value": "",
+      "type": "string"
     },
     {
       "key": "snapshot_id",
-      "value": ""
+      "value": "",
+      "type": "string"
     },
     {
       "key": "source_account_id",
-      "value": ""
+      "value": "",
+      "type": "string"
     },
     {
       "key": "destination_account_id",
-      "value": ""
-    },
-    {
-      "key": "default_account_id",
-      "value": ""
+      "value": "",
+      "type": "string"
     },
     {
       "key": "debt_id",
-      "value": ""
+      "value": "",
+      "type": "string"
     },
     {
       "key": "debt_transaction_id",
-      "value": ""
+      "value": "",
+      "type": "string"
     },
     {
       "key": "limit_id",
-      "value": ""
+      "value": "",
+      "type": "string"
     },
     {
-      "key": "group_id",
-      "value": ""
+      "key": "space_id",
+      "value": "",
+      "type": "string"
     },
     {
-      "key": "group_debt_id",
-      "value": ""
+      "key": "space_debt_id",
+      "value": "",
+      "type": "string"
     },
     {
-      "key": "group_repayment_id",
-      "value": ""
+      "key": "space_repayment_id",
+      "value": "",
+      "type": "string"
     },
     {
-      "key": "group_transfer_id",
-      "value": ""
+      "key": "space_transfer_id",
+      "value": "",
+      "type": "string"
     },
     {
-      "key": "group_expense_id",
-      "value": ""
+      "key": "space_expense_id",
+      "value": "",
+      "type": "string"
     },
     {
-      "key": "group_income_id",
-      "value": ""
+      "key": "space_income_id",
+      "value": "",
+      "type": "string"
     },
     {
-      "key": "group_limit_id",
-      "value": ""
+      "key": "space_limit_id",
+      "value": "",
+      "type": "string"
     },
     {
-      "key": "group_plan_id",
-      "value": ""
+      "key": "space_plan_id",
+      "value": "",
+      "type": "string"
     },
     {
-      "key": "group_invitation_id",
-      "value": ""
+      "key": "space_invitation_id",
+      "value": "",
+      "type": "string"
     },
     {
       "key": "plan_id",
-      "value": ""
+      "value": "",
+      "type": "string"
     },
     {
       "key": "expense_id",
-      "value": ""
+      "value": "",
+      "type": "string"
     },
     {
       "key": "income_id",
-      "value": ""
+      "value": "",
+      "type": "string"
     },
     {
       "key": "transaction_id",
-      "value": ""
+      "value": "",
+      "type": "string"
     },
     {
       "key": "transfer_id",
-      "value": ""
+      "value": "",
+      "type": "string"
     }
   ],
   "item": [
@@ -211,7 +246,9 @@
           "host": [
             "{{base_url}}"
           ],
-          "path": [],
+          "path": [
+            "{{base_url}}"
+          ],
           "query": []
         },
         "description": "Source: src/app.controller.ts\n",
@@ -231,7 +268,8 @@
             ]
           }
         }
-      ]
+      ],
+      "response": []
     },
     {
       "name": "GET /users/me",
@@ -267,7 +305,8 @@
             ]
           }
         }
-      ]
+      ],
+      "response": []
     },
     {
       "name": "Missing JWT returns 401",
@@ -306,7 +345,8 @@
             ]
           }
         }
-      ]
+      ],
+      "response": []
     }
   ]
 }

@@ -1,96 +1,21 @@
-import { Connection, Model, Types } from 'mongoose';
+import { Model, Types } from 'mongoose';
 import { DebtTransactionDocument } from '../debt-transactions/schemas/debt-transaction.schema';
 import { IncomesService } from '../transactions/incomes/incomes.service';
-import { UserDocument } from '../users/schemas/user.schema';
 import { DebtDocument } from './schemas/debt.schema';
 import { DebtsService } from './debts.service';
 import { TransactionsService } from '../transactions/transactions/transactions.service';
 import { TransactionDocument } from '../transactions/schemas/transaction.schema';
-
-describe('DebtsService transaction origin', () => {
-  const userId = '507f1f77bcf86cd799439011';
-  const debtId = '507f1f77bcf86cd799439012';
-  const accountId = '507f1f77bcf86cd799439013';
-  const session = {
-    withTransaction: jest.fn(async (work: () => Promise<unknown>) => work()),
-    endSession: jest.fn(),
-  };
-  const debtModel = {
-    findOne: jest.fn(),
-    findOneAndUpdate: jest.fn(),
-  };
-  const userModel = { exists: jest.fn() };
-  const debtTransactionModel = {
-    create: jest.fn().mockResolvedValue([{ toObject: () => ({}) }]),
-  };
-  const transactionModel = { exists: jest.fn() };
-  const incomeService = { create: jest.fn() };
-  const connection = { startSession: jest.fn().mockResolvedValue(session) };
-  const service = new DebtsService(
-    debtModel as unknown as Model<DebtDocument>,
-    userModel as unknown as Model<UserDocument>,
-    debtTransactionModel as unknown as Model<DebtTransactionDocument>,
-    transactionModel as unknown as Model<TransactionDocument>,
-    incomeService as unknown as IncomesService,
-    connection as unknown as Connection,
-    {} as TransactionsService,
-  );
-
-  beforeEach(() => {
-    jest.clearAllMocks();
-    userModel.exists.mockResolvedValue({ _id: new Types.ObjectId(userId) });
-    debtModel.findOne.mockReturnValue({
-      lean: () => ({
-        exec: async () => ({
-          _id: new Types.ObjectId(debtId),
-          debtor: 'Borrower',
-          remainingAmount: 100,
-          status: 'active',
-          currency: 'RUB',
-        }),
-      }),
-    });
-    debtModel.findOneAndUpdate.mockReturnValue({
-      lean: () => ({
-        exec: async () => ({
-          _id: new Types.ObjectId(debtId),
-          remainingAmount: 50,
-          status: 'active',
-        }),
-      }),
-    });
-  });
-
-  it('marks generated repayment income with its debt origin', async () => {
-    incomeService.create.mockResolvedValue({ currency: 'RUB' });
-    await service.repay(userId, debtId, {
-      accountId,
-      amount: 50,
-      repaymentDate: '2026-09-21',
-      isIncome: true,
-    });
-
-    expect(incomeService.create).toHaveBeenCalledWith(
-      userId,
-      expect.objectContaining({ amount: 50 }),
-      session,
-      { type: 'debt', id: new Types.ObjectId(debtId) },
-    );
-  });
-});
-
 describe('DebtsService shared budget rules', () => {
   const actorId = new Types.ObjectId().toHexString();
-  const groupId = new Types.ObjectId();
+  const spaceId = new Types.ObjectId();
   const debtId = new Types.ObjectId();
   const repaymentId = new Types.ObjectId();
   const incomeId = new Types.ObjectId();
-  const budget = { ownerType: 'group' as const, ownerId: groupId };
+  const budget = { spaceId: spaceId };
   const session = {} as import('mongoose').ClientSession;
   const current = {
     _id: debtId,
-    ownerType: 'group',
-    ownerId: groupId,
+    spaceId: spaceId,
     createdBy: new Types.ObjectId(actorId),
     debtor: 'Borrower',
     principalAmount: 100,
@@ -109,15 +34,25 @@ describe('DebtsService shared budget rules', () => {
     findOneAndUpdate: jest.Mock;
   };
   let historyModel: {
+    create: jest.Mock;
     exists: jest.Mock;
     findOne: jest.Mock;
     findOneAndUpdate: jest.Mock;
   };
-  let transactionModel: { findOne: jest.Mock };
-  let transactionsService: { deleteForBudget: jest.Mock };
+  let transactionModel: {
+    findOne: jest.Mock;
+  };
+  let transactionsService: {
+    deleteForBudget: jest.Mock;
+  };
+  const incomes = { createForBudget: jest.fn() };
   let service: DebtsService;
-
   beforeEach(() => {
+    jest.clearAllMocks();
+    incomes.createForBudget.mockResolvedValue({
+      _id: incomeId,
+      currency: 'USD',
+    });
     debtModel = {
       create: jest
         .fn()
@@ -128,6 +63,11 @@ describe('DebtsService shared budget rules', () => {
       findOneAndUpdate: jest.fn().mockReturnValue(query(current)),
     };
     historyModel = {
+      create: jest
+        .fn()
+        .mockImplementation(async ([row]: object[]) => [
+          { toObject: () => row },
+        ]),
       exists: jest.fn().mockReturnValue({ session: async () => null }),
       findOne: jest.fn(),
       findOneAndUpdate: jest.fn(),
@@ -136,16 +76,13 @@ describe('DebtsService shared budget rules', () => {
     transactionsService = { deleteForBudget: jest.fn() };
     service = new DebtsService(
       debtModel as unknown as Model<DebtDocument>,
-      {} as Model<UserDocument>,
       historyModel as unknown as Model<DebtTransactionDocument>,
       transactionModel as unknown as Model<TransactionDocument>,
-      {} as IncomesService,
-      {} as Connection,
+      incomes as unknown as IncomesService,
       transactionsService as unknown as TransactionsService,
     );
   });
-
-  it('creates a KWD minor-unit group debt with server-owned amounts/status and no personal owner', async () => {
+  it('creates a KWD minor-unit space debt with server-owned amounts/status and no personal owner', async () => {
     const debt = await service.createForBudget(
       budget,
       actorId,
@@ -159,8 +96,7 @@ describe('DebtsService shared budget rules', () => {
       session,
     );
     expect(debt).toMatchObject({
-      ownerType: 'group',
-      ownerId: groupId,
+      spaceId: spaceId,
       createdBy: new Types.ObjectId(actorId),
       principalAmount: 0.001,
       remainingAmount: 0.001,
@@ -171,9 +107,46 @@ describe('DebtsService shared budget rules', () => {
       session,
     });
   });
-
+  it('links a cash repayment to exactly one debt-origin income in the caller session', async () => {
+    await service.repayForBudget(
+      budget,
+      actorId,
+      String(debtId),
+      {
+        accountId: new Types.ObjectId().toString(),
+        amount: 30,
+        repaymentDate: '2026-09-21',
+        isIncome: true,
+      },
+      session,
+    );
+    expect(incomes.createForBudget).toHaveBeenCalledTimes(1);
+    expect(incomes.createForBudget).toHaveBeenCalledWith(
+      budget,
+      actorId,
+      expect.objectContaining({ amount: 30 }),
+      session,
+      { type: 'debt', id: debtId },
+    );
+    expect(historyModel.create).toHaveBeenCalledWith(
+      [
+        expect.objectContaining({
+          ...budget,
+          incomeId,
+          amount: 30,
+          createdBy: new Types.ObjectId(actorId),
+        }),
+      ],
+      { session },
+    );
+    expect(debtModel.findOneAndUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ ...budget, remainingAmount: 70 }),
+      { remainingAmount: 40, status: 'active' },
+      expect.objectContaining({ session }),
+    );
+  });
   it.each([{ remainingAmount: 2 }, { status: 'closed' as const }])(
-    'rejects manual group accounting updates %p even from a trusted caller',
+    'rejects manual space accounting updates %p even from a trusted caller',
     async (changes) => {
       await expect(
         service.updateForBudget(budget, String(debtId), changes, session),
@@ -181,7 +154,6 @@ describe('DebtsService shared budget rules', () => {
       expect(debtModel.findOneAndUpdate).not.toHaveBeenCalled();
     },
   );
-
   it('freezes principal after any history, including cancelled records', async () => {
     historyModel.exists.mockReturnValue({
       session: async () => ({ _id: repaymentId, cancelledAt: new Date() }),
@@ -197,7 +169,6 @@ describe('DebtsService shared budget rules', () => {
     expect(debtModel.findOneAndUpdate).not.toHaveBeenCalled();
     expect(historyModel.exists).toHaveBeenCalledWith({ debtId });
   });
-
   it('changes principal and remaining together before history', async () => {
     await service.updateForBudget(
       budget,
@@ -207,15 +178,13 @@ describe('DebtsService shared budget rules', () => {
     );
     expect(debtModel.findOneAndUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
-        ownerType: 'group',
-        ownerId: groupId,
+        spaceId: spaceId,
         archivedAt: null,
       }),
       { principalAmount: 120, remainingAmount: 120 },
       expect.objectContaining({ session, runValidators: true }),
     );
   });
-
   it('rejects foreign repayment ownership before resolving any income', async () => {
     historyModel.findOne.mockReturnValue(query(null));
     await expect(
@@ -230,12 +199,10 @@ describe('DebtsService shared budget rules', () => {
     expect(historyModel.findOne).toHaveBeenCalledWith({
       _id: String(repaymentId),
       debtId,
-      ownerType: 'group',
-      ownerId: groupId,
+      spaceId: spaceId,
     });
     expect(transactionModel.findOne).not.toHaveBeenCalled();
   });
-
   it.each([
     'missing',
     'deleted',

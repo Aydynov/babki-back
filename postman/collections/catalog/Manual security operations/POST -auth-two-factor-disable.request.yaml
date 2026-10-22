@@ -3,7 +3,7 @@ name: POST /auth/two-factor/disable
 description: |-
   Source: src/modules/auth/auth.controller.ts
   Optional body fields:
-url: "{{base_url}}/auth/two-factor/disable"
+url: '{{base_url}}/auth/two-factor/disable'
 method: POST
 headers:
   Accept: application/json

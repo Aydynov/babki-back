@@ -3,9 +3,7 @@ import { AccountsSnapshotsModule } from '../accounts-snapshots/accounts-snapshot
 import { AccountsModule } from '../accounts/accounts.module';
 import { ExpenseCategoriesModule } from '../expense-categories/expense-categories.module';
 import { TransactionsModule } from '../transactions/transactions.module';
-import { ReportsController } from './reports.controller';
 import { ReportsService } from './reports.service';
-
 @Module({
   imports: [
     AccountsModule,
@@ -13,7 +11,7 @@ import { ReportsService } from './reports.service';
     TransactionsModule,
     ExpenseCategoriesModule,
   ],
-  controllers: [ReportsController],
+  controllers: [],
   providers: [ReportsService],
   exports: [ReportsService],
 })

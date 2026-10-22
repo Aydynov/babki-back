@@ -1,30 +1,38 @@
-import { Types } from 'mongoose';
 import request, { Response } from 'supertest';
-import { startGroupsTestApp } from './helpers/groups-test-app';
-
+import { startSpacesTestApp } from './helpers/spaces-test-app';
 describe('Budget core behavior before and after unification', () => {
-  let ctx: Awaited<ReturnType<typeof startGroupsTestApp>>;
-  const idOf = (r: Response) => (r.body as { _id: string })._id;
+  let ctx: Awaited<ReturnType<typeof startSpacesTestApp>>;
+  const idOf = (r: Response) =>
+    (
+      r.body as {
+        _id: string;
+      }
+    )._id;
   const api = (method: 'get' | 'post' | 'patch' | 'delete', path: string) =>
     request(ctx.app.getHttpServer() as Parameters<typeof request>[0])
       [method](`/api/v1${path}`)
       .auth(ctx.users[0].token, { type: 'bearer' });
   beforeAll(async () => {
-    ctx = await startGroupsTestApp();
+    ctx = await startSpacesTestApp();
   }, 60000);
   afterAll(async () => {
     await ctx?.close();
   });
-
-  it.each(['user', 'group'] as const)(
+  it.each(['space'] as const)(
     'retains %s DTOs, author data, pagination, edits and deletion',
     async (ownerType) => {
       let base = '';
-      if (ownerType === 'group') {
-        const group = await api('post', '/groups')
-          .send({ name: 'Contract', type: 'family' })
+      if (ownerType === 'space') {
+        const space = await api('post', '/spaces')
+          .send({ name: 'Contract' })
           .expect(201);
-        base = `/groups/${(group.body as { id: string }).id}`;
+        base = `/spaces/${
+          (
+            space.body as {
+              id: string;
+            }
+          ).id
+        }`;
       }
       const accountId = idOf(
         await api('post', `${base}/accounts`)
@@ -96,7 +104,7 @@ describe('Budget core behavior before and after unification', () => {
       });
       await api('patch', `${base}/expenses/${idOf(expense)}`)
         .send({})
-        .expect(ownerType === 'group' ? 400 : 200);
+        .expect(ownerType === 'space' ? 400 : 200);
       await api('patch', `${base}/expenses/${idOf(expense)}`)
         .send({ amount: 0.2 })
         .expect(200);
@@ -118,39 +126,4 @@ describe('Budget core behavior before and after unification', () => {
       await api('get', `${base}/expenses/${idOf(expense)}`).expect(404);
     },
   );
-
-  it('preserves a personal snapshot carry not reconstructible from transactions', async () => {
-    const accountId = idOf(
-      await api('post', '/accounts')
-        .send({
-          name: 'Historical carry',
-          currency: 'USD',
-          type: 'balance',
-          openedAt: '2024-01-01T00:00:00Z',
-        })
-        .expect(201),
-    );
-    await ctx.connection
-      .collection('accountsnapshots')
-      .updateMany(
-        { accountId: new Types.ObjectId(accountId) },
-        { $set: { amount: 77 } },
-      );
-    const income = await api('post', '/incomes')
-      .send({ accountId, amount: 10, transactionDate: '2025-06-15T12:00:00Z' })
-      .expect(201);
-    expect(
-      (await api('get', `/accounts/${accountId}`).expect(200)).body,
-    ).toMatchObject({ amount: 87 });
-    await api('patch', `/incomes/${idOf(income)}`)
-      .send({ amount: 15 })
-      .expect(200);
-    expect(
-      (await api('get', `/accounts/${accountId}`).expect(200)).body,
-    ).toMatchObject({ amount: 92 });
-    await api('delete', `/transactions/${idOf(income)}`).expect(204);
-    expect(
-      (await api('get', `/accounts/${accountId}`).expect(200)).body,
-    ).toMatchObject({ amount: 77 });
-  });
 });

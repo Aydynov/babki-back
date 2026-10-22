@@ -1,13 +1,10 @@
-import { Transform } from 'class-transformer';
 import {
   IsEmail,
-  IsIn,
   IsOptional,
   IsString,
   MaxLength,
   MinLength,
 } from 'class-validator';
-import { SUPPORTED_CURRENCY_CODES } from 'src/common/money/money';
 
 export class RegisterDto {
   @IsString()
@@ -25,12 +22,6 @@ export class RegisterDto {
   @MinLength(8)
   @MaxLength(128)
   password: string;
-
-  @Transform(({ value }: { value: unknown }) =>
-    typeof value === 'string' ? value.trim().toUpperCase() : value,
-  )
-  @IsIn(SUPPORTED_CURRENCY_CODES)
-  currency: string;
 
   @IsOptional()
   @IsString()

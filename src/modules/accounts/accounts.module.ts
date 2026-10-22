@@ -1,12 +1,10 @@
 import { Module } from '@nestjs/common';
 import { AccountsSnapshotsModule } from '../accounts-snapshots/accounts-snapshots.module';
+import { BudgetsModule } from '../budgets/budgets.module';
 import { TransactionsModule } from '../transactions/transactions.module';
 import { UsersModule } from '../users/users.module';
-import { BudgetsModule } from '../budgets/budgets.module';
 import { AccountsLookupModule } from './accounts-lookup.module';
-import { AccountsController } from './accounts/accounts.controller';
 import { AccountsService } from './accounts/accounts.service';
-
 @Module({
   imports: [
     UsersModule,
@@ -15,7 +13,7 @@ import { AccountsService } from './accounts/accounts.service';
     TransactionsModule,
     AccountsLookupModule,
   ],
-  controllers: [AccountsController],
+  controllers: [],
   providers: [AccountsService],
   exports: [AccountsLookupModule, AccountsService],
 })

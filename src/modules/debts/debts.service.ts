@@ -5,75 +5,59 @@ import {
   NotFoundException,
   OnModuleInit,
 } from '@nestjs/common';
-import { InjectConnection, InjectModel } from '@nestjs/mongoose';
-import { ClientSession, Connection, Model, Types } from 'mongoose';
+import { InjectModel } from '@nestjs/mongoose';
+import { ClientSession, Model, Types } from 'mongoose';
 import { BudgetContext, budgetFilter } from 'src/common/budget/budget-context';
 import { hasValidMoneyPrecision, normalizeMoney } from 'src/common/money/money';
-import {
-  personalBudget,
-  personalResponse,
-} from 'src/common/utils/personal-budget.util';
 import { getPagination } from '../../common/utils/pagination.util';
-import { IncomesService } from '../transactions/incomes/incomes.service';
-import { TransactionsService } from '../transactions/transactions/transactions.service';
 import {
   DebtTransaction,
   DebtTransactionDocument,
 } from '../debt-transactions/schemas/debt-transaction.schema';
-import { User, UserDocument } from '../users/schemas/user.schema';
+import { IncomesService } from '../transactions/incomes/incomes.service';
 import {
   Transaction,
   TransactionDocument,
 } from '../transactions/schemas/transaction.schema';
-import { CreateDebtDto } from './dto/create-debt.dto';
+import { TransactionsService } from '../transactions/transactions/transactions.service';
 import { ListDebtsQueryDto } from './dto/list-debts-query.dto';
-import { RepayDebtDto } from './dto/repay-debt.dto';
-import { UpdateDebtDto } from './dto/update-debt.dto';
 import {
   CreateDebtCommand,
-  UpdateDebtCommand,
   RepayDebtCommand,
+  UpdateDebtCommand,
 } from './interfaces/debt-command.interface';
 import { Debt, DebtDocument } from './schemas/debt.schema';
-
 export type DebtRepaymentResult = {
-  debt: Debt & { _id: Types.ObjectId };
-  repayment: DebtTransaction & { _id: Types.ObjectId };
+  debt: Debt & {
+    _id: Types.ObjectId;
+  };
+  repayment: DebtTransaction & {
+    _id: Types.ObjectId;
+  };
 };
-
 @Injectable()
 export class DebtsService implements OnModuleInit {
   constructor(
-    @InjectModel(Debt.name) private readonly debtModel: Model<DebtDocument>,
-    @InjectModel(User.name) private readonly userModel: Model<UserDocument>,
+    @InjectModel(Debt.name)
+    private readonly debtModel: Model<DebtDocument>,
     @InjectModel(DebtTransaction.name)
     private readonly debtTransactionModel: Model<DebtTransactionDocument>,
     @InjectModel(Transaction.name)
     private readonly transactionModel: Model<TransactionDocument>,
     private readonly incomeService: IncomesService,
-    @InjectConnection() private readonly connection: Connection,
     private readonly transactionsService: TransactionsService,
   ) {}
-
   async onModuleInit() {
     await this.debtModel.createIndexes();
     await this.debtTransactionModel.createIndexes();
   }
-
-  create(userId: string, dto: CreateDebtDto) {
-    return this.runPersonal(userId, (budget, session) =>
-      this.createForBudget(budget, userId, dto, session),
-    );
-  }
-
   async createForBudget(
     budget: BudgetContext,
     actorId: string,
     dto: CreateDebtCommand,
     session: ClientSession,
   ) {
-    const remainingAmount =
-      budget.ownerType === 'group' ? dto.principalAmount : dto.remainingAmount!;
+    const remainingAmount = dto.principalAmount;
     this.validateAmount(budget, dto.principalAmount, dto.currency);
     if (!hasValidMoneyPrecision(remainingAmount, dto.currency))
       throw new BadRequestException('Amount exceeds currency precision.');
@@ -85,42 +69,30 @@ export class DebtsService implements OnModuleInit {
           ...budgetFilter(budget),
           createdBy: new Types.ObjectId(actorId),
           remainingAmount,
-          ...(budget.ownerType === 'group' ? { status: 'active' } : {}),
+          ...{ status: 'active' },
         },
       ],
       { session },
     );
     return debt.toObject();
   }
-
-  async findAll(userId: string, query: ListDebtsQueryDto) {
-    await this.ensureUserExists(userId);
-    return personalResponse(
-      await this.listForBudget(personalBudget(userId), query),
-    );
-  }
-
   async listForBudget(
     budget: BudgetContext,
-    query: ListDebtsQueryDto & { includeArchived?: boolean },
+    query: ListDebtsQueryDto & {
+      includeArchived?: boolean;
+    },
   ) {
     const { page, limit, skip } = getPagination(query);
     const filter = {
       ...budgetFilter(budget),
-      ...(budget.ownerType === 'user' || !query.includeArchived
-        ? { archivedAt: null }
-        : {}),
+      ...(!query.includeArchived ? { archivedAt: null } : {}),
       ...(query.status ? { status: query.status } : {}),
       ...(query.currency ? { currency: query.currency } : {}),
     };
     const [items, total] = await Promise.all([
       this.debtModel
         .find(filter)
-        .sort(
-          budget.ownerType === 'group'
-            ? { createdAt: -1, _id: -1 }
-            : { createdAt: -1 },
-        )
+        .sort({ createdAt: -1, _id: -1 })
         .skip(skip)
         .limit(limit)
         .lean()
@@ -129,49 +101,23 @@ export class DebtsService implements OnModuleInit {
     ]);
     return { items, total, page, limit };
   }
-
-  async findOne(userId: string, debtId: string) {
-    await this.ensureUserExists(userId);
-    return personalResponse(
-      await this.getForBudget(personalBudget(userId), debtId),
-    );
-  }
-
   getForBudget(budget: BudgetContext, debtId: string, session?: ClientSession) {
-    return this.requireDebt(
-      budget,
-      debtId,
-      session,
-      budget.ownerType === 'user',
-    );
+    return this.requireDebt(budget, debtId, session, false);
   }
-
-  update(userId: string, debtId: string, dto: UpdateDebtDto) {
-    return this.runPersonal(userId, (budget, session) =>
-      this.updateForBudget(budget, debtId, dto, session),
-    );
-  }
-
   async updateForBudget(
     budget: BudgetContext,
     debtId: string,
     dto: UpdateDebtCommand,
     session: ClientSession,
   ) {
-    const current = await this.requireDebt(
-      budget,
-      debtId,
-      session,
-      budget.ownerType === 'group',
-    );
-    const group = budget.ownerType === 'group';
-    if (group && ('remainingAmount' in dto || 'status' in dto))
+    const current = await this.requireDebt(budget, debtId, session, true);
+    if ('remainingAmount' in dto || 'status' in dto)
       throw new BadRequestException(
-        'Group debt remaining amount and status are managed by repayments.',
+        'Space debt remaining amount and status are managed by repayments.',
       );
     const principal = dto.principalAmount ?? current.principalAmount;
     const remaining =
-      group && dto.principalAmount !== undefined
+      dto.principalAmount !== undefined
         ? principal
         : (dto.remainingAmount ?? current.remainingAmount);
     if (
@@ -180,7 +126,7 @@ export class DebtsService implements OnModuleInit {
     )
       throw new BadRequestException('Amount exceeds currency precision.');
     this.validateAmounts(principal, remaining);
-    if (group && dto.principalAmount !== undefined) {
+    if (dto.principalAmount !== undefined) {
       this.validateAmount(budget, principal, current.currency);
       if (
         await this.debtTransactionModel
@@ -193,7 +139,7 @@ export class DebtsService implements OnModuleInit {
     }
     const changes = {
       ...dto,
-      ...(group && dto.principalAmount !== undefined
+      ...(dto.principalAmount !== undefined
         ? { remainingAmount: principal }
         : {}),
     };
@@ -206,15 +152,6 @@ export class DebtsService implements OnModuleInit {
       .lean()
       .exec();
   }
-
-  async repay(userId: string, debtId: string, dto: RepayDebtDto) {
-    return this.runPersonal(
-      userId,
-      async (budget, session) =>
-        (await this.repayForBudget(budget, userId, debtId, dto, session)).debt,
-    );
-  }
-
   async repayForBudget(
     budget: BudgetContext,
     actorId: string,
@@ -232,18 +169,14 @@ export class DebtsService implements OnModuleInit {
         'Repayment amount cannot exceed the remaining debt amount.',
       );
     this.validateAmount(budget, dto.amount, current.currency);
-    const group = budget.ownerType === 'group';
     if (
-      group &&
-      (typeof dto.isIncome !== 'boolean' ||
-        (!dto.isIncome && dto.accountId !== undefined))
+      typeof dto.isIncome !== 'boolean' ||
+      (!dto.isIncome && dto.accountId !== undefined)
     )
       throw new BadRequestException(
         'Invalid repayment income/account combination.',
       );
-    const description = group
-      ? (dto.description ?? `Погашение долга ${current.debtor}`)
-      : dto.description;
+    const description = dto.description ?? `Погашение долга ${current.debtor}`;
     let incomeId: Types.ObjectId | undefined;
     if (dto.isIncome) {
       if (!dto.accountId)
@@ -258,15 +191,13 @@ export class DebtsService implements OnModuleInit {
         source: `Погашение долга ${current.debtor}`,
       };
       const origin = { type: 'debt' as const, id: new Types.ObjectId(debtId) };
-      const income = group
-        ? await this.incomeService.createForBudget(
-            budget,
-            actorId,
-            command,
-            session,
-            origin,
-          )
-        : await this.incomeService.create(actorId, command, session, origin);
+      const income = await this.incomeService.createForBudget(
+        budget,
+        actorId,
+        command,
+        session,
+        origin,
+      );
       if (income.currency !== current.currency)
         throw new BadRequestException(
           'Debt and account currencies must match.',
@@ -282,13 +213,11 @@ export class DebtsService implements OnModuleInit {
           transactionDate: dto.repaymentDate,
           amount: dto.amount,
           description,
-          ...(group
-            ? {
-                isIncome: dto.isIncome,
-                cancelledAt: null,
-                ...(incomeId ? { incomeId } : {}),
-              }
-            : {}),
+          ...{
+            isIncome: dto.isIncome,
+            cancelledAt: null,
+            ...(incomeId ? { incomeId } : {}),
+          },
         },
       ],
       { session },
@@ -318,7 +247,6 @@ export class DebtsService implements OnModuleInit {
       throw new ConflictException('Debt state changed; retry the request.');
     return { debt, repayment: history.toObject() };
   }
-
   async cancelRepaymentForBudget(
     budget: BudgetContext,
     actorId: string,
@@ -327,8 +255,6 @@ export class DebtsService implements OnModuleInit {
     session: ClientSession,
   ): Promise<DebtRepaymentResult> {
     const current = await this.requireDebt(budget, debtId, session, true);
-    if (budget.ownerType !== 'group')
-      throw new NotFoundException('Repayment not found');
     const repayment = await this.debtTransactionModel
       .findOne({
         _id: repaymentId,
@@ -413,13 +339,6 @@ export class DebtsService implements OnModuleInit {
       throw new ConflictException('Debt state changed; retry the request.');
     return { debt, repayment: cancelled };
   }
-
-  remove(userId: string, debtId: string) {
-    return this.runPersonal(userId, (budget, session) =>
-      this.removeForBudget(budget, debtId, session),
-    );
-  }
-
   async removeForBudget(
     budget: BudgetContext,
     debtId: string,
@@ -432,7 +351,7 @@ export class DebtsService implements OnModuleInit {
     const income = await this.transactionModel
       .exists({ 'origin.type': 'debt', 'origin.id': debt._id })
       .session(session);
-    if (history || income || (budget.ownerType === 'group' && debt.archivedAt))
+    if (history || income || debt.archivedAt)
       throw new ConflictException(
         'Cannot delete a debt with financial history; archive it instead.',
       );
@@ -443,13 +362,6 @@ export class DebtsService implements OnModuleInit {
     if (!deleted)
       throw new ConflictException('Debt state changed; retry the request.');
   }
-
-  archive(userId: string, debtId: string) {
-    return this.runPersonal(userId, (budget, session) =>
-      this.archiveForBudget(budget, debtId, session),
-    );
-  }
-
   async archiveForBudget(
     budget: BudgetContext,
     debtId: string,
@@ -462,7 +374,6 @@ export class DebtsService implements OnModuleInit {
     );
     if (!archived) throw this.notFound(budget, debtId);
   }
-
   private async requireDebt(
     budget: BudgetContext,
     debtId: string,
@@ -479,42 +390,9 @@ export class DebtsService implements OnModuleInit {
     if (!debt) throw this.notFound(budget, debtId);
     return debt;
   }
-
-  private notFound(budget: BudgetContext, debtId: string) {
-    return new NotFoundException(
-      budget.ownerType === 'user'
-        ? `Debt ${debtId} for user ${budget.ownerId.toString()} not found.`
-        : 'Debt not found',
-    );
+  private notFound(_budget: BudgetContext, _debtId: string) {
+    return new NotFoundException('Debt not found');
   }
-
-  private async runPersonal<T>(
-    userId: string,
-    work: (budget: BudgetContext, session: ClientSession) => Promise<T>,
-  ) {
-    const session = await this.connection.startSession();
-    try {
-      return personalResponse(
-        await session.withTransaction(async () => {
-          await this.ensureUserExists(userId, session);
-          return work(personalBudget(userId), session);
-        }),
-      );
-    } finally {
-      await session.endSession();
-    }
-  }
-
-  private async ensureUserExists(userId: string, session?: ClientSession) {
-    const query = this.userModel.exists({ _id: userId });
-    const found =
-      session && typeof query.session === 'function'
-        ? await query.session(session)
-        : await query;
-    if (!found) throw new NotFoundException(`User ${userId} not found.`);
-    return found._id;
-  }
-
   private validateAmount(
     budget: BudgetContext,
     amount: number,
@@ -522,10 +400,9 @@ export class DebtsService implements OnModuleInit {
   ) {
     if (!hasValidMoneyPrecision(amount, currency))
       throw new BadRequestException('Amount exceeds currency precision.');
-    if (budget.ownerType === 'group' && normalizeMoney(amount, currency) <= 0)
+    if (normalizeMoney(amount, currency) <= 0)
       throw new BadRequestException('Amount must be positive.');
   }
-
   private validateAmounts(principalAmount: number, remainingAmount: number) {
     if (remainingAmount > principalAmount)
       throw new BadRequestException(

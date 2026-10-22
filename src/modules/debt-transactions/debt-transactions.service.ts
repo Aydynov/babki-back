@@ -2,10 +2,6 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { ClientSession, Model, Types } from 'mongoose';
 import { BudgetContext, budgetFilter } from 'src/common/budget/budget-context';
-import {
-  personalBudget,
-  personalResponse,
-} from 'src/common/utils/personal-budget.util';
 import { getPagination } from 'src/common/utils/pagination.util';
 import { Debt, DebtDocument } from '../debts/schemas/debt.schema';
 import { ListDebtTransactionsQueryDto } from './dto/list-debt-transactions-query.dto';
@@ -13,25 +9,14 @@ import {
   DebtTransaction,
   DebtTransactionDocument,
 } from './schemas/debt-transaction.schema';
-
 @Injectable()
 export class DebtTransactionsService {
   constructor(
     @InjectModel(DebtTransaction.name)
     private readonly debtTransactionModel: Model<DebtTransactionDocument>,
-    @InjectModel(Debt.name) private readonly debtModel: Model<DebtDocument>,
+    @InjectModel(Debt.name)
+    private readonly debtModel: Model<DebtDocument>,
   ) {}
-
-  async findAll(
-    userId: string,
-    debtId: string,
-    query: ListDebtTransactionsQueryDto,
-  ) {
-    return personalResponse(
-      await this.listForBudget(personalBudget(userId), debtId, query),
-    );
-  }
-
   async listForBudget(
     budget: BudgetContext,
     debtId: string,
@@ -46,11 +31,7 @@ export class DebtTransactionsService {
     const [items, total] = await Promise.all([
       this.debtTransactionModel
         .find(filter)
-        .sort(
-          budget.ownerType === 'group'
-            ? { transactionDate: -1, createdAt: -1, _id: -1 }
-            : { transactionDate: -1, createdAt: -1 },
-        )
+        .sort({ transactionDate: -1, createdAt: -1, _id: -1 })
         .skip(skip)
         .limit(limit)
         .lean()
@@ -59,13 +40,6 @@ export class DebtTransactionsService {
     ]);
     return { items, total, page, limit };
   }
-
-  async findOne(userId: string, debtId: string, repaymentId: string) {
-    return personalResponse(
-      await this.getForBudget(personalBudget(userId), debtId, repaymentId),
-    );
-  }
-
   async getForBudget(
     budget: BudgetContext,
     debtId: string,
@@ -86,7 +60,6 @@ export class DebtTransactionsService {
       );
     return row;
   }
-
   private async ensureDebtExists(
     budget: BudgetContext,
     debtId: string,

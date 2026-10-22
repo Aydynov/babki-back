@@ -1,41 +1,28 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import {
-  addMonths,
-  endOfMonth,
-  endOfYear,
-  isAfter,
-  startOfMonth,
-} from 'date-fns';
+import { addMonths, endOfMonth, startOfMonth } from 'date-fns';
 import { format } from 'date-fns/format';
 import { Model, Types } from 'mongoose';
 import {
   BudgetContext,
   budgetFilter,
 } from '../../common/budget/budget-context';
-import { Account } from '../accounts/schemas/accounts.schema';
 import { normalizeMoney } from '../../common/money/money';
-import { personalBudget } from '../../common/utils/personal-budget.util';
 import { AccountsSnapshotsService } from '../accounts-snapshots/accounts-snapshots.service';
-import {
-  AccountSnapshot,
-  AccountSnapshotsDocument,
-} from '../accounts-snapshots/schemas/accounts-snapshots.schema';
-import { AccountsService } from '../accounts/accounts/accounts.service';
-import { ExpenseCategoriesService } from '../expense-categories/expense-categories.service';
+import { Account } from '../accounts/schemas/accounts.schema';
 import {
   Transaction,
   TransactionDocument,
 } from '../transactions/schemas/transaction.schema';
 import { activeTransactionFilter } from '../transactions/transactions/active-transaction.filter';
-import { MonthlyReportsQueryDto } from './dto/monthly-reports-query.dto';
-import { ReportsQueryDto } from './dto/reports-query.dto';
 import {
   CurrencyPeriodReport,
   PeriodReport,
 } from './interfaces/period-report.interface';
-
-export type ReportPeriod = { period: string; endDate: Date };
+export type ReportPeriod = {
+  period: string;
+  endDate: Date;
+};
 type AccountMeta = {
   _id: Types.ObjectId;
   type: 'balance' | 'saving';
@@ -44,106 +31,18 @@ type AccountMeta = {
 type Totals = Pick<
   CurrencyPeriodReport,
   'incomes' | 'expenses' | 'transfersIn' | 'transfersOut'
-> & { expensesByCategory: Map<string, number> };
-
+> & {
+  expensesByCategory: Map<string, number>;
+};
 @Injectable()
 export class ReportsService {
   constructor(
     @InjectModel(Transaction.name)
     private readonly transactions: Model<TransactionDocument>,
-    private readonly accountsService: AccountsService,
     private readonly snapshotsService: AccountsSnapshotsService,
-    private readonly categoriesService: ExpenseCategoriesService,
-    @InjectModel(AccountSnapshot.name)
-    private readonly snapshots: Model<AccountSnapshotsDocument>,
-    @InjectModel(Account.name) private readonly accounts: Model<Account>,
+    @InjectModel(Account.name)
+    private readonly accounts: Model<Account>,
   ) {}
-
-  async findMonthly(
-    userId: string,
-    query: MonthlyReportsQueryDto,
-  ): Promise<PeriodReport[]> {
-    const accounts = await this.findAccounts(userId);
-    const first = await this.firstSnapshot(userId);
-    const reportStart = query.fromDate ?? first;
-    if (!reportStart) return [];
-    const start = startOfMonth(reportStart);
-    const end = endOfMonth(query.toDate ?? new Date());
-    if (isAfter(start, end)) return [];
-    return this.build(
-      userId,
-      accounts,
-      this.monthPeriods(start, end),
-      'month',
-      query.categories,
-    );
-  }
-
-  async findYearly(
-    userId: string,
-    query: ReportsQueryDto,
-  ): Promise<PeriodReport[]> {
-    const accounts = await this.findAccounts(userId);
-    const first = await this.firstSnapshot(userId);
-    if (!first) return [];
-    const periods: ReportPeriod[] = [];
-    for (
-      let year = new Date(first).getFullYear();
-      year <= new Date().getFullYear();
-      year += 1
-    )
-      periods.push({
-        period: String(year),
-        endDate: endOfYear(new Date(year, 0, 1)),
-      });
-    return this.build(userId, accounts, periods, 'year', query.categories);
-  }
-
-  private async build(
-    userId: string,
-    accounts: AccountMeta[],
-    periods: ReportPeriod[],
-    grouping: 'month' | 'year',
-    filterIds?: string[],
-  ) {
-    const categories = await this.categoriesService.findAll(userId);
-    const categoryIds = categories
-      .map((item) => item._id.toString())
-      .filter((id) => !filterIds?.length || filterIds.includes(id));
-    const range = {
-      from: new Date(
-        periods[0].period + (grouping === 'year' ? '-01-01' : '-01'),
-      ),
-      to: periods.at(-1)!.endDate,
-    };
-    const snapshots = await this.snapshots
-      .find({
-        accountId: { $in: accounts.map((account) => account._id) },
-        date: { $lte: range.to },
-      })
-      .sort({ date: 1, createdAt: 1 })
-      .lean()
-      .exec();
-    return this.buildForBudget(
-      personalBudget(userId),
-      accounts,
-      periods,
-      grouping,
-      categoryIds,
-      filterIds && categoryIds,
-      (account, endDate) =>
-        Promise.resolve(
-          snapshots
-            .filter(
-              (item) =>
-                item.accountId.toString() === account._id.toString() &&
-                !isAfter(item.date, endDate),
-            )
-            .at(-1)?.amount ?? 0,
-        ),
-    );
-  }
-
   async reportForBudget(
     budget: BudgetContext,
     periods: ReportPeriod[],
@@ -169,7 +68,6 @@ export class ReportsService {
         ),
     );
   }
-
   private async buildForBudget(
     budget: BudgetContext,
     accounts: AccountMeta[],
@@ -232,11 +130,13 @@ export class ReportsService {
       }),
     );
   }
-
   private aggregateFinancial(
     budget: BudgetContext,
     grouping: 'month' | 'year',
-    range: { from: Date; to: Date },
+    range: {
+      from: Date;
+      to: Date;
+    },
     categoryIds?: string[],
   ) {
     const match: Record<string, unknown> = {
@@ -286,11 +186,13 @@ export class ReportsService {
       },
     ]);
   }
-
   private aggregateTransfers(
     budget: BudgetContext,
     grouping: 'month' | 'year',
-    range: { from: Date; to: Date },
+    range: {
+      from: Date;
+      to: Date;
+    },
   ) {
     return this.transactions.aggregate<{
       period: string;
@@ -350,7 +252,6 @@ export class ReportsService {
       },
     ]);
   }
-
   private toTotals(
     financial: {
       period: string;
@@ -387,7 +288,6 @@ export class ReportsService {
     }
     return result;
   }
-
   private empty(): Totals {
     return {
       incomes: 0,
@@ -396,24 +296,6 @@ export class ReportsService {
       transfersOut: 0,
       expensesByCategory: new Map(),
     };
-  }
-  private async findAccounts(userId: string): Promise<AccountMeta[]> {
-    const accounts = await this.accountsService.findByParams(userId, {});
-    if (!accounts.length)
-      throw new NotFoundException(`Accounts for user ${userId} not found.`);
-    return accounts.map((account: Account & { _id: Types.ObjectId }) => ({
-      _id: account._id,
-      type: account.type,
-      currency: account.currency!,
-    }));
-  }
-  private async firstSnapshot(userId: string) {
-    const snapshots = await this.snapshotsService.findByUserId(userId);
-    return snapshots.reduce<Date | null>(
-      (first, snapshot) =>
-        !first || isAfter(first, snapshot.date) ? snapshot.date : first,
-      null,
-    );
   }
   private monthPeriods(start: Date, end: Date) {
     const result: ReportPeriod[] = [];

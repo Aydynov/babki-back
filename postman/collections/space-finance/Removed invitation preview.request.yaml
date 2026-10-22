@@ -1,0 +1,19 @@
+$kind: http-request
+name: Removed invitation route
+url: '{{base_url}}/group-invitations/preview'
+method: POST
+headers:
+  Accept: application/json
+  Content-Type: application/json
+order: 18100
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |
+      pm.test('HTTP 404', () => pm.response.to.have.status(404));
+body:
+  type: json
+  content: |-
+    {
+      "token": "removed-route-token"
+    }

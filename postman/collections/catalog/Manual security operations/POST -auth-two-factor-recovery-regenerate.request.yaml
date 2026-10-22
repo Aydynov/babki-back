@@ -3,7 +3,7 @@ name: POST /auth/two-factor/recovery/regenerate
 description: |-
   Source: src/modules/auth/auth.controller.ts
   Optional body fields:
-url: "{{base_url}}/auth/two-factor/recovery/regenerate"
+url: '{{base_url}}/auth/two-factor/recovery/regenerate'
 method: POST
 headers:
   Accept: application/json

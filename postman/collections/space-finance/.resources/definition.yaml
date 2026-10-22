@@ -1,0 +1,84 @@
+$kind: collection
+name: Babki Space Finance
+description: 'Disposable target only. Registers a zero-space user, explicitly creates empty spaces, exercises financial operations and rejects cross-space references and removed routes.'
+variables:
+  currency: RUB
+  now: ''
+  future_date: ''
+  from_date: ''
+  to_date: ''
+  run_id: ''
+  challenge_token: ''
+  second_factor_code: ''
+  invitation_token: ''
+  account_id: ''
+  category_id: ''
+  space_account_id: ''
+  space_source_account_id: ''
+  space_destination_account_id: ''
+  space_category_id: ''
+  participant_id: ''
+  space_categories: ''
+  user_id: ''
+  categories: ''
+  snapshot_id: ''
+  source_account_id: ''
+  destination_account_id: ''
+  debt_id: ''
+  debt_transaction_id: ''
+  limit_id: ''
+  space_id: ''
+  space_debt_id: ''
+  space_repayment_id: ''
+  space_transfer_id: ''
+  space_expense_id: ''
+  space_income_id: ''
+  space_limit_id: ''
+  space_plan_id: ''
+  space_invitation_id: ''
+  plan_id: ''
+  expense_id: ''
+  income_id: ''
+  transaction_id: ''
+  transfer_id: ''
+  other_space_id: ''
+scripts:
+  - type: 'http:beforeRequest'
+    code: |-
+      const base = pm.variables.get('base_url');
+      if (!base || !/^https?:\/\//.test(base)) throw new Error('Select an environment and set base_url');
+      if (!pm.variables.get('run_id')) pm.variables.set('run_id', pm.variables.replaceIn('{{$guid}}'));
+      pm.variables.set('now', new Date().toISOString());
+      pm.variables.set('future_date', new Date(Date.now() + 30 * 86400000).toISOString());
+      if (!['GET','HEAD','OPTIONS'].includes(pm.request.method) && pm.variables.get('allow_mutations') !== 'true') {
+        pm.execution.skipRequest();
+        throw new Error('Set allow_mutations=true only for a disposable test target');
+      }
+      if (!pm.variables.get('workflow_initialized')) {
+        pm.variables.set('workflow_initialized', 'true');
+        pm.variables.set('email', 'postman-' + pm.variables.get('run_id') + '@example.test');
+        pm.variables.set('password', pm.variables.replaceIn('{{$guid}}') + 'Aa1!');
+      }
+    language: text/javascript
+  - type: 'http:afterResponse'
+    language: text/javascript
+    code: |-
+      if (pm.response.code >= 200 && pm.response.code < 300 && /\/spaces\/[^/]+\/(accounts|incomes|expenses|transactions|transfers|expense-categories|expense-limits|plans|debts)(?:\/|$)/.test(pm.variables.replaceIn(pm.request.url.toString())) && pm.response.text()) {
+        const body = pm.response.json();
+        pm.test('Financial DTO omits ownership aliases and storage counters', () => {
+          function check(value) {
+            if (Array.isArray(value)) return value.forEach(check);
+            if (!value || typeof value !== 'object') return;
+            ['ownerType', 'ownerId', 'mutationVersion', 'lockVersion', '__v'].forEach(key => pm.expect(value).not.to.have.property(key));
+            Object.values(value).forEach(check);
+          }
+          check(body);
+        });
+        if (body._id) pm.test('Financial resource belongs to selected space', () => pm.expect(body.spaceId).to.equal(pm.variables.get('space_id')));
+      }
+auth:
+  - id: 900de144-9660-41be-9f7e-0ff183d65cca
+    type: bearer
+    name: bearer auth
+    credentials:
+      token: '{{access_token}}'

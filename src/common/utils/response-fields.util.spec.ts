@@ -1,6 +1,5 @@
 import { model, Schema, Types } from 'mongoose';
 import { omitResponseFields } from './response-fields.util';
-import { personalResponse } from './personal-budget.util';
 
 describe('response field omission', () => {
   it('preserves public identities, dates and money without changing nested source objects', () => {
@@ -9,7 +8,7 @@ describe('response field omission', () => {
     const fields = new Set(['__v', 'mutationVersion', 'lockVersion']);
     const row = {
       _id: id,
-      ownerId: id,
+      spaceId: id,
       createdAt: date,
       amount: -0.001,
       __v: 2,
@@ -21,7 +20,7 @@ describe('response field omission', () => {
       items: [
         {
           _id: id,
-          ownerId: id,
+          spaceId: id,
           createdAt: date,
           amount: -0.001,
           timeline: [{ date, amount: 0 }],
@@ -38,7 +37,7 @@ describe('response field omission', () => {
     expect(omitResponseFields(null, fields)).toBeNull();
   });
 
-  it('supports Mongoose documents and preserves the exact personal omission policy', () => {
+  it('supports Mongoose documents without mutating stored metadata', () => {
     const TestDocument = model(
       'ResponseFieldsTest',
       new Schema({ name: String, mutationVersion: Number }),
@@ -49,19 +48,5 @@ describe('response field omission', () => {
       name: 'Cash',
     });
     expect(doc.mutationVersion).toBe(9);
-    const row = {
-      ownerType: 'user',
-      mutationVersion: 3,
-      __v: 7,
-      initialAmount: 1,
-      openedAt: '2024-01-01',
-      amount: 2,
-      nested: { createdBy: 'actor', __v: 8 },
-    };
-    expect(personalResponse(row)).toEqual({
-      __v: 7,
-      amount: 2,
-      nested: { __v: 8 },
-    });
   });
 });

@@ -1,0 +1,23 @@
+$kind: http-request
+name: 'POST /spaces/:spaceId/plans/:id/close'
+description: |-
+  Source: src/modules/space-finances/group-plans.controller.ts
+  Optional body fields: amount, closingDate, description, participantId
+url: '{{base_url}}/spaces/{{space_id}}/plans/{{space_plan_id}}/close'
+method: POST
+headers:
+  Accept: application/json
+  Content-Type: application/json
+body:
+  type: json
+  content: |-
+    {
+      "accountId": "{{space_account_id}}"
+    }
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('HTTP 201', () => pm.response.to.have.status(201));
+      pm.test('JSON response', () => pm.response.to.be.json);
+    language: text/javascript
+order: 50000

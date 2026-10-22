@@ -1,0 +1,12 @@
+$kind: http-request
+name: Missing membership is hidden
+url: '{{base_url}}/spaces/000000000000000000000001/accounts'
+method: GET
+headers:
+  Accept: application/json
+order: 8500
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |
+      pm.test('HTTP 404', () => pm.response.to.have.status(404));

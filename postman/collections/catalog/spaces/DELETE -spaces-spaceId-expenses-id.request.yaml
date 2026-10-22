@@ -1,0 +1,15 @@
+$kind: http-request
+name: 'DELETE /spaces/:spaceId/expenses/:id'
+description: |
+  Source: src/modules/space-finances/space-finances.controller.ts
+url: '{{base_url}}/spaces/{{space_id}}/expenses/{{space_expense_id}}'
+method: DELETE
+headers:
+  Accept: application/json
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('HTTP 204', () => pm.response.to.have.status(204));
+      pm.test('Empty response', () => pm.expect(pm.response.text()).to.equal(''));
+    language: text/javascript
+order: 28000

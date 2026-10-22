@@ -1,0 +1,25 @@
+$kind: http-request
+name: 'POST /spaces/:spaceId/debts'
+description: |-
+  Source: src/modules/space-finances/group-debts.controller.ts
+  Optional body fields: description, dueDate
+url: '{{base_url}}/spaces/{{space_id}}/debts'
+method: POST
+headers:
+  Accept: application/json
+  Content-Type: application/json
+body:
+  type: json
+  content: |-
+    {
+      "debtor": "Postman test",
+      "principalAmount": 100,
+      "currency": "{{currency}}"
+    }
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('HTTP 201', () => pm.response.to.have.status(201));
+      pm.test('JSON response', () => pm.response.to.be.json);
+    language: text/javascript
+order: 1000

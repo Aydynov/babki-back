@@ -1,0 +1,26 @@
+$kind: http-request
+name: 'PATCH /spaces/:spaceId/plans/:id'
+description: |-
+  Source: src/modules/space-finances/group-plans.controller.ts
+  Optional body fields: description, targetDate, amount, categoryId
+url: '{{base_url}}/spaces/{{space_id}}/plans/{{space_plan_id}}'
+method: PATCH
+headers:
+  Accept: application/json
+  Content-Type: application/json
+body:
+  type: json
+  content: |-
+    {
+      "description": "Postman test",
+      "targetDate": "{{future_date}}",
+      "amount": 100,
+      "categoryId": "{{space_category_id}}"
+    }
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('HTTP 200', () => pm.response.to.have.status(200));
+      pm.test('JSON response', () => pm.response.to.be.json);
+    language: text/javascript
+order: 49000

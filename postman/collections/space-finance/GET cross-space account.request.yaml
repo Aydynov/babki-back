@@ -1,0 +1,12 @@
+$kind: http-request
+name: Other space cannot read account
+url: '{{base_url}}/spaces/{{other_space_id}}/accounts/{{account_id}}'
+method: GET
+headers:
+  Accept: application/json
+order: 8600
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |
+      pm.test('HTTP 404', () => pm.response.to.have.status(404));

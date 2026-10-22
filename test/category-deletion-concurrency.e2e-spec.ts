@@ -1,18 +1,21 @@
 import { Types } from 'mongoose';
 import request, { Response } from 'supertest';
-import { startGroupsTestApp } from './helpers/groups-test-app';
-
-describe('Personal category lifecycle (real MongoDB replica set)', () => {
-  let harness: Awaited<ReturnType<typeof startGroupsTestApp>>;
+import { startSpacesTestApp } from './helpers/spaces-test-app';
+describe('Sole-member space category lifecycle (real MongoDB replica set)', () => {
+  let harness: Awaited<ReturnType<typeof startSpacesTestApp>>;
   let sequence = 0;
   let accountId: string;
+  let spaceId: string;
+  const financialPath = (path: string) => `/api/v1/spaces/${spaceId}${path}`;
   const oid = (value: string) => new Types.ObjectId(value);
   const collection = (name: string) => harness.connection.collection(name);
   const api = () => {
     const server = harness.app.getHttpServer() as Parameters<typeof request>[0];
     const token = harness.users[0].token;
     const call = (method: 'get' | 'post' | 'patch' | 'delete', path: string) =>
-      request(server)[method](`/api/v1${path}`).auth(token, { type: 'bearer' });
+      request(server)
+        [method](financialPath(path))
+        .auth(token, { type: 'bearer' });
     return {
       get: (path: string) => call('get', path),
       post: (path: string, body: object) => call('post', path).send(body),
@@ -20,9 +23,13 @@ describe('Personal category lifecycle (real MongoDB replica set)', () => {
       delete: (path: string) => call('delete', path),
     };
   };
-  const idOf = (response: Response) => (response.body as { _id: string })._id;
+  const idOf = (response: Response) =>
+    (
+      response.body as {
+        _id: string;
+      }
+    )._id;
   const date = '2026-09-21T00:00:00.000Z';
-
   async function category() {
     sequence += 1;
     return idOf(
@@ -31,7 +38,6 @@ describe('Personal category lifecycle (real MongoDB replica set)', () => {
         .expect(201),
     );
   }
-
   async function balance() {
     sequence += 1;
     return idOf(
@@ -41,11 +47,11 @@ describe('Personal category lifecycle (real MongoDB replica set)', () => {
           type: 'balance',
           currency: 'USD',
           amount: 100,
+          openedAt: date,
         })
         .expect(201),
     );
   }
-
   function createDependency(
     kind: 'expense' | 'limit' | 'plan',
     categoryId: string,
@@ -75,34 +81,24 @@ describe('Personal category lifecycle (real MongoDB replica set)', () => {
       targetDate: '2026-12-01',
     });
   }
-
   beforeAll(async () => {
-    harness = await startGroupsTestApp();
+    harness = await startSpacesTestApp();
   }, 60000);
-
   beforeEach(async () => {
-    const user = oid(harness.users[0].id);
-    for (const name of [
-      'transactions',
-      'accountsnapshots',
-      'accounts',
-      'expenselimits',
-      'plans',
-      'expensecategories',
-    ]) {
-      await collection(name).deleteMany(
-        name === 'plans'
-          ? { userId: user }
-          : { $or: [{ ownerId: user }, { userId: user }] },
-      );
-    }
+    const created = await request(
+      harness.app.getHttpServer() as Parameters<typeof request>[0],
+    )
+      .post('/api/v1/spaces')
+      .auth(harness.users[0].token, { type: 'bearer' })
+      .send({ name: 'Sole-member regression space' })
+      .expect(201);
+    spaceId = (created.body as { id: string }).id;
     accountId = await balance();
   });
 
   afterAll(async () => {
     await harness?.close();
   }, 30000);
-
   it.each(['expense', 'limit', 'plan'] as const)(
     'restricts category deletion when referenced by a %s',
     async (kind) => {
@@ -110,13 +106,12 @@ describe('Personal category lifecycle (real MongoDB replica set)', () => {
       const dependency = await createDependency(kind, categoryId).expect(201);
       if (kind === 'expense') {
         await api()
-          .delete(`/transactions/${idOf(dependency)}`)
+          .delete(`/expenses/${idOf(dependency)}`)
           .expect(204);
       }
       if (kind === 'plan') {
         expect(dependency.body).toMatchObject({ categoryId });
       }
-
       await api().delete(`/expense-categories/${categoryId}`).expect(409);
       expect(
         await collection('expensecategories').countDocuments({
@@ -125,16 +120,13 @@ describe('Personal category lifecycle (real MongoDB replica set)', () => {
       ).toBe(1);
     },
   );
-
   it('deletes only a leaf limit and preserves its category and financial history', async () => {
     const categoryId = await category();
     const expense = await createDependency('expense', categoryId).expect(201);
     const limit = await createDependency('limit', categoryId).expect(201);
-
     await api()
       .delete(`/expense-limits/${idOf(limit)}`)
       .expect(204);
-
     expect(
       await collection('expensecategories').countDocuments({
         _id: oid(categoryId),
@@ -146,18 +138,15 @@ describe('Personal category lifecycle (real MongoDB replica set)', () => {
       }),
     ).toBe(1);
   });
-
-  it('archives a used category, hides it and allows edits without reassignment', async () => {
+  it('retains an archived category and allows edits without assigning it again', async () => {
     const categoryId = await category();
     const expense = await createDependency('expense', categoryId).expect(201);
-
     await api()
       .patch(`/expense-categories/${categoryId}`, { isArchived: true })
       .expect(200);
-
-    expect((await api().get('/expense-categories').expect(200)).body).toEqual(
-      [],
-    );
+    expect((await api().get('/expense-categories').expect(200)).body).toEqual([
+      expect.objectContaining({ _id: categoryId, isArchived: true, spaceId }),
+    ]);
     await createDependency('expense', categoryId).expect(409);
     await createDependency('limit', categoryId).expect(409);
     await createDependency('plan', categoryId).expect(409);
@@ -165,7 +154,6 @@ describe('Personal category lifecycle (real MongoDB replica set)', () => {
       .patch(`/expenses/${idOf(expense)}`, { amount: 20 })
       .expect(200);
   });
-
   it.each(['expense', 'limit', 'plan'] as const)(
     'serializes category deletion against %s creation',
     async (kind) => {
@@ -174,14 +162,12 @@ describe('Personal category lifecycle (real MongoDB replica set)', () => {
         api().delete(`/expense-categories/${categoryId}`),
         createDependency(kind, categoryId),
       ]);
-
       expect([
         [204, 404],
         [409, 201],
       ]).toContainEqual([deletion.status, creation.status]);
     },
   );
-
   it.each(['expense', 'limit', 'plan'] as const)(
     'serializes category archival against %s creation',
     async (kind) => {
@@ -190,7 +176,6 @@ describe('Personal category lifecycle (real MongoDB replica set)', () => {
         api().patch(`/expense-categories/${categoryId}`, { isArchived: true }),
         createDependency(kind, categoryId),
       ]);
-
       expect(archival.status).toBe(200);
       expect([201, 409]).toContain(creation.status);
       expect(

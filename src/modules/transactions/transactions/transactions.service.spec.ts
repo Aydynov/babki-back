@@ -2,13 +2,11 @@ import { NotFoundException } from '@nestjs/common';
 import { ClientSession, Model, Types } from 'mongoose';
 import { AccountsSnapshotsService } from '../../accounts-snapshots/accounts-snapshots.service';
 import { AccountDocument } from '../../accounts/schemas/accounts.schema';
-import { UserDocument } from '../../users/schemas/user.schema';
 import { TransactionDocument } from '../schemas/transaction.schema';
 import { TransactionsService } from './transactions.service';
 import { BudgetWriteService } from '../../budgets/budget-write.service';
-import { groupBudget } from 'src/common/budget/budget-context';
-
-describe('personal transactions boundary', () => {
+import { spaceBudget } from 'src/common/budget/budget-context';
+describe('space transactions boundary', () => {
   const userId = new Types.ObjectId().toString();
   const first = '507f1f77bcf86cd799439011';
   const second = '507f1f77bcf86cd799439012';
@@ -32,7 +30,6 @@ describe('personal transactions boundary', () => {
     ),
   };
   const service = new TransactionsService(
-    {} as Model<UserDocument>,
     transactionModel as unknown as Model<TransactionDocument>,
     accountModel as unknown as Model<AccountDocument>,
     snapshots as unknown as AccountsSnapshotsService,
@@ -42,18 +39,16 @@ describe('personal transactions boundary', () => {
     jest.clearAllMocks();
     accountModel.updateOne.mockResolvedValue({ matchedCount: 1 });
   });
-  it('filters all personal aggregates by explicit owner context', () => {
-    expect(service.buildFilter(new Types.ObjectId(userId), {})).toEqual({
-      userId: new Types.ObjectId(userId),
-      ownerType: 'user',
-      ownerId: new Types.ObjectId(userId),
+  it('scopes all aggregates to the explicit space', () => {
+    expect(service.buildFilterForBudget(spaceBudget(userId), {})).toEqual({
+      spaceId: new Types.ObjectId(userId),
       deletedAt: null,
     });
   });
   it('filters account history through either transfer effect', () => {
     const accountId = new Types.ObjectId(first);
     expect(
-      service.buildFilter(new Types.ObjectId(userId), { accountId: first }),
+      service.buildFilterForBudget(spaceBudget(userId), { accountId: first }),
     ).toMatchObject({
       $or: [
         { accountId },
@@ -62,32 +57,25 @@ describe('personal transactions boundary', () => {
       ],
     });
     expect(
-      service.buildFilter(new Types.ObjectId(userId), {
+      service.buildFilterForBudget(spaceBudget(userId), {
         accountId: first,
         transactionType: 'income',
       }),
     ).toMatchObject({ accountId, type: 'income' });
   });
   it('uses the indexed stable order for transaction pagination', async () => {
-    jest.spyOn(service, 'ensureUserExists').mockResolvedValue({
-      userId: new Types.ObjectId(userId),
-      ownerType: 'user',
-      ownerId: new Types.ObjectId(userId),
-    });
     const exec = jest.fn().mockResolvedValue([]);
     const limit = jest.fn().mockReturnValue({ lean: () => ({ exec }) });
     const skip = jest.fn().mockReturnValue({ limit });
     const sort = jest.fn().mockReturnValue({ skip });
     transactionModel.find.mockReturnValue({ sort });
     transactionModel.countDocuments.mockResolvedValue(0);
-
-    await service.findAll(userId, { page: 1, limit: 20 });
-
+    await service.findAllForBudget(spaceBudget(userId), { page: 1, limit: 20 });
     expect(sort).toHaveBeenCalledWith({ transactionDate: -1, _id: -1 });
   });
   it('locks both save accounts once in a stable order', async () => {
-    await service.lockAccounts(
-      userId,
+    await service.lockAccountsForBudget(
+      spaceBudget(userId),
       [second, first, second],
       session as unknown as ClientSession,
     );
@@ -95,30 +83,24 @@ describe('personal transactions boundary', () => {
       accountModel.updateOne.mock.calls.map(([filter]) => filter._id),
     ).toEqual([first, second]);
     expect(accountModel.updateOne.mock.calls[0][0]).toMatchObject({
-      ownerType: 'user',
-      ownerId: new Types.ObjectId(userId),
+      spaceId: new Types.ObjectId(userId),
       archivedAt: null,
     });
   });
-
   it('checks immutable history in both account directions', async () => {
     const historyQuery = {
       session: jest.fn().mockResolvedValue({ _id: second }),
     };
     transactionModel.exists.mockReturnValue(historyQuery);
-
     await expect(
-      service.hasHistoryByAccountId(
-        userId,
+      service.hasHistoryForBudget(
+        spaceBudget(userId),
         first,
         session as unknown as ClientSession,
       ),
     ).resolves.toBe(true);
-
     expect(transactionModel.exists).toHaveBeenCalledWith({
-      ownerType: 'user',
-      ownerId: new Types.ObjectId(userId),
-      userId: new Types.ObjectId(userId),
+      spaceId: new Types.ObjectId(userId),
       $or: [
         { accountId: new Types.ObjectId(first) },
         { 'source.accountId': new Types.ObjectId(first) },
@@ -127,11 +109,11 @@ describe('personal transactions boundary', () => {
     });
     expect(historyQuery.session).toHaveBeenCalledWith(session);
   });
-  it('rejects a group account even when its identifier is supplied', async () => {
+  it('rejects a foreign account even when its identifier is supplied', async () => {
     accountModel.updateOne.mockResolvedValue({ matchedCount: 0 });
     await expect(
-      service.lockAccounts(
-        userId,
+      service.lockAccountsForBudget(
+        spaceBudget(userId),
         [first],
         session as unknown as ClientSession,
       ),
@@ -151,13 +133,17 @@ describe('personal transactions boundary', () => {
     transactionModel.findOneAndUpdate.mockResolvedValue({ toObject: () => tx });
     jest.spyOn(service, 'accountForBudget').mockResolvedValue({
       _id: new Types.ObjectId(first),
-      ownerType: 'user',
-      ownerId: new Types.ObjectId(userId),
+      spaceId: new Types.ObjectId(userId),
       currency: 'USD',
     } as Awaited<ReturnType<TransactionsService['accountForBudget']>>);
-    await service.delete(userId, second);
+    await service.deleteForBudget(
+      spaceBudget(userId),
+      userId,
+      tx as never,
+      session as never,
+    );
     expect(transactionModel.findOneAndUpdate).toHaveBeenCalledWith(
-      expect.objectContaining({ ownerType: 'user', deletedAt: null }),
+      expect.objectContaining({ deletedAt: null }),
       {
         $set: {
           deletedAt: expect.any(Date),
@@ -168,16 +154,15 @@ describe('personal transactions boundary', () => {
     );
     expect(snapshots.applyForBudget).toHaveBeenCalledWith(
       expect.objectContaining({
-        ownerType: 'user',
-        ownerId: new Types.ObjectId(userId),
+        spaceId: new Types.ObjectId(userId),
       }),
       tx.transactionDate,
       42,
       session,
     );
   });
-  it('shares group history lookup while retaining the owner pair and deleted history', async () => {
-    const budget = groupBudget(userId);
+  it('keeps deleted history in scoped dependency lookups', async () => {
+    const budget = spaceBudget(userId);
     transactionModel.exists.mockReturnValue({
       session: async () => ({ _id: first }),
     });
@@ -197,30 +182,13 @@ describe('personal transactions boundary', () => {
       ],
     });
   });
-
-  it('does not run or close an existing personal session', async () => {
-    const callback = jest.fn(async () => 42);
-    await expect(
-      service.runForBudget(
-        { ownerType: 'user', ownerId: new Types.ObjectId(userId) },
-        userId,
-        callback,
-        session as unknown as ClientSession,
-      ),
-    ).resolves.toBe(42);
-    expect(callback).toHaveBeenCalledWith(session);
-    expect(write.run).not.toHaveBeenCalled();
-    expect(session.endSession).not.toHaveBeenCalled();
-  });
   it.each([
-    ['user', 'income', 10, 15, 5],
-    ['user', 'expense', 20, 7, 13],
-    ['group', 'income', 10, 15, 5],
-    ['group', 'expense', 20, 7, 13],
+    ['income', 10, 15, 5],
+    ['expense', 20, 7, 13],
   ] as const)(
-    'applies the %s %s old/new difference in the caller transaction',
-    async (ownerType, type, amount, updated, expectedDelta) => {
-      const budget = { ownerType, ownerId: new Types.ObjectId(userId) };
+    'applies the %s old/new difference in the caller transaction',
+    async (type, amount, updated, expectedDelta) => {
+      const budget = spaceBudget(userId);
       const account = {
         ...budget,
         _id: new Types.ObjectId(first),
@@ -229,7 +197,7 @@ describe('personal transactions boundary', () => {
       const row = {
         ...budget,
         _id: new Types.ObjectId(second),
-        createdBy: budget.ownerId,
+        createdBy: new Types.ObjectId(userId),
         accountId: account._id,
         snapshotId: new Types.ObjectId(),
         amount,
@@ -251,8 +219,7 @@ describe('personal transactions boundary', () => {
       );
       expect(transactionModel.findOneAndUpdate).toHaveBeenCalledWith(
         expect.objectContaining({
-          ownerType,
-          ownerId: budget.ownerId,
+          ...budget,
           deletedAt: null,
         }),
         { $set: { amount: updated } },
@@ -266,9 +233,8 @@ describe('personal transactions boundary', () => {
       );
     },
   );
-
-  it('matches either group transfer account without a personal userId', () => {
-    const budget = groupBudget(userId);
+  it('matches either space transfer account without a personal userId', () => {
+    const budget = spaceBudget(userId);
     expect(
       service.buildFilterForBudget(budget, {
         accountId: first,

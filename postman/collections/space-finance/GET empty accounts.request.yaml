@@ -1,0 +1,13 @@
+$kind: http-request
+name: New space has no accounts
+url: '{{base_url}}/spaces/{{space_id}}/accounts'
+method: GET
+headers:
+  Accept: application/json
+order: 2500
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('HTTP 200', () => pm.response.to.have.status(200));
+      pm.test('No automatic account', () => pm.expect(pm.response.json()).to.deep.equal([]));

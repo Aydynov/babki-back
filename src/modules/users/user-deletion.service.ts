@@ -7,7 +7,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { InjectConnection, InjectModel } from '@nestjs/mongoose';
 import { Connection, Model, Types } from 'mongoose';
-import { Group } from '../groups/schemas/group.schema';
+import { Space } from '../spaces/schemas/space.schema';
 import {
   UserDeletionJob,
   UserDeletionJobDocument,
@@ -23,7 +23,7 @@ export class UserDeletionService {
     @InjectModel(User.name) private readonly users: Model<UserDocument>,
     @InjectModel(UserDeletionJob.name)
     private readonly jobs: Model<UserDeletionJobDocument>,
-    @InjectModel(Group.name) private readonly groups: Model<Group>,
+    @InjectModel(Space.name) private readonly spaces: Model<Space>,
     @InjectConnection() private readonly connection: Connection,
     config: ConfigService,
   ) {
@@ -39,12 +39,12 @@ export class UserDeletionService {
     const session = await this.connection.startSession();
     try {
       await session.withTransaction(async () => {
-        const ownsGroup = await this.groups
+        const ownsSpace = await this.spaces
           .exists({ ownerId: new Types.ObjectId(userId), deletedAt: null })
           .session(session);
-        if (ownsGroup) {
+        if (ownsSpace) {
           throw new ConflictException(
-            'Transfer ownership or delete owned groups first.',
+            'Transfer ownership or delete owned spaces first.',
           );
         }
         const user = await this.users.findOneAndUpdate(
@@ -135,32 +135,14 @@ export class UserDeletionWorker {
 
   async diagnose(userId: string) {
     const user = new Types.ObjectId(userId);
-    const personal = { ownerType: 'user', ownerId: user };
-    const accounts = await this.connection
-      .collection('accounts')
-      .find(personal, { projection: { _id: 1 } })
-      .toArray();
-    const accountIds = accounts.map(({ _id }) => _id);
     const count = (name: string, filter: object) =>
       this.connection.collection(name).countDocuments(filter);
     return {
       userId,
-      memberships: await count('groupmemberships', {
+      memberships: await count('spacememberships', {
         userId: user,
         status: 'active',
       }),
-      personalFinance: {
-        transactions: await count('transactions', personal),
-        snapshots: await count('accountsnapshots', {
-          accountId: { $in: accountIds },
-        }),
-        accounts: accounts.length,
-        limits: await count('expenselimits', personal),
-        plans: await count('plans', personal),
-        debtTransactions: await count('debttransactions', personal),
-        debts: await count('debts', personal),
-        categories: await count('expensecategories', personal),
-      },
       authData: {
         challenges: await count('authchallenges', { userId: user }),
         twoFactor: await count('usertwofactors', { userId: user }),
@@ -175,7 +157,7 @@ export class UserDeletionWorker {
     now: Date,
   ) {
     if (stage === 'memberships') {
-      await this.connection.collection('groupmemberships').updateMany(
+      await this.connection.collection('spacememberships').updateMany(
         { userId, status: 'active' },
         {
           $set: {
@@ -185,27 +167,6 @@ export class UserDeletionWorker {
           },
         },
       );
-      return;
-    }
-    if (stage === 'personal_finance') {
-      const personal = { ownerType: 'user', ownerId: userId };
-      const accounts = await this.connection
-        .collection('accounts')
-        .find(personal, { projection: { _id: 1 } })
-        .toArray();
-      const accountIds = accounts.map(({ _id }) => _id);
-      await this.connection.collection('transactions').deleteMany(personal);
-      await this.connection.collection('accountsnapshots').deleteMany({
-        accountId: { $in: accountIds },
-      });
-      await this.connection.collection('accounts').deleteMany(personal);
-      await this.connection.collection('expenselimits').deleteMany(personal);
-      await this.connection.collection('plans').deleteMany(personal);
-      await this.connection.collection('debttransactions').deleteMany(personal);
-      await this.connection.collection('debts').deleteMany(personal);
-      await this.connection
-        .collection('expensecategories')
-        .deleteMany(personal);
       return;
     }
     if (stage === 'auth_data') {
@@ -243,8 +204,7 @@ export class UserDeletionWorker {
     now: Date,
   ) {
     const next: Record<UserDeletionStage, UserDeletionStage> = {
-      memberships: 'personal_finance',
-      personal_finance: 'auth_data',
+      memberships: 'auth_data',
       auth_data: 'tombstone',
       tombstone: 'completed',
       completed: 'completed',

@@ -1,35 +1,37 @@
-import { Types } from 'mongoose';
 import request, { Response } from 'supertest';
-import { startGroupsTestApp } from './helpers/groups-test-app';
-
-describe('Personal multicurrency finances (real MongoDB replica set)', () => {
-  let harness: Awaited<ReturnType<typeof startGroupsTestApp>>;
-  const oid = (value: string) => new Types.ObjectId(value);
-  const collection = (name: string) => harness.connection.collection(name);
+import { startSpacesTestApp } from './helpers/spaces-test-app';
+describe('Sole-member space multicurrency finances (real MongoDB replica set)', () => {
+  let harness: Awaited<ReturnType<typeof startSpacesTestApp>>;
+  let spaceId: string;
+  const financialPath = (path: string) => `/api/v1/spaces/${spaceId}${path}`;
   const server = () =>
     harness.app.getHttpServer() as Parameters<typeof request>[0];
   const api = (user = 0) => ({
     get: (path: string) =>
       request(server())
-        .get(`/api/v1${path}`)
+        .get(financialPath(path))
         .auth(harness.users[user].token, { type: 'bearer' }),
     post: (path: string, body: object = {}) =>
       request(server())
-        .post(`/api/v1${path}`)
+        .post(financialPath(path))
         .auth(harness.users[user].token, { type: 'bearer' })
         .send(body),
     patch: (path: string, body: object = {}) =>
       request(server())
-        .patch(`/api/v1${path}`)
+        .patch(financialPath(path))
         .auth(harness.users[user].token, { type: 'bearer' })
         .send(body),
     delete: (path: string) =>
       request(server())
-        .delete(`/api/v1${path}`)
+        .delete(financialPath(path))
         .auth(harness.users[user].token, { type: 'bearer' }),
   });
-  const idOf = (response: Response) => (response.body as { _id: string })._id;
-
+  const idOf = (response: Response) =>
+    (
+      response.body as {
+        _id: string;
+      }
+    )._id;
   async function account(
     name: string,
     type: 'balance' | 'saving',
@@ -38,123 +40,33 @@ describe('Personal multicurrency finances (real MongoDB replica set)', () => {
   ) {
     return idOf(
       await api()
-        .post('/accounts', { name, type, currency, amount })
+        .post('/accounts', {
+          name,
+          type,
+          currency,
+          amount,
+          openedAt: '2026-01-01',
+        })
         .expect(201),
     );
   }
-
   beforeAll(async () => {
-    harness = await startGroupsTestApp();
+    harness = await startSpacesTestApp();
   }, 60000);
-
   beforeEach(async () => {
-    const userId = oid(harness.users[0].id);
-    await collection('transactions').deleteMany({
-      ownerType: 'user',
-      ownerId: userId,
-    });
-    await collection('accountsnapshots').deleteMany({});
-    await collection('accounts').deleteMany({
-      ownerType: 'user',
-      ownerId: userId,
-    });
-    await collection('expenselimits').deleteMany({ ownerId: userId });
-    await collection('plans').deleteMany({ userId });
-    await collection('debts').deleteMany({ userId });
-    await collection('debttransactions').deleteMany({ userId });
-    await collection('expensecategories').deleteMany({ ownerId: userId });
-    await collection('users').updateOne(
-      { _id: userId },
-      { $set: { defaultCurrency: 'USD', defaultAccountId: null } },
-    );
+    const created = await request(
+      harness.app.getHttpServer() as Parameters<typeof request>[0],
+    )
+      .post('/api/v1/spaces')
+      .auth(harness.users[0].token, { type: 'bearer' })
+      .send({ name: 'Sole-member regression space' })
+      .expect(201);
+    spaceId = (created.body as { id: string }).id;
   });
 
   afterAll(async () => {
     await harness?.close();
   }, 30000);
-
-  it('manages multiple named accounts and consistent profile defaults', async () => {
-    const firstUsd = await account('USD main', 'balance', 'USD');
-    const secondUsd = await account('USD travel', 'balance', 'USD');
-    const rub = await account('RUB main', 'balance', 'RUB');
-    await account('USD reserve', 'saving', 'USD');
-    await account('USD second reserve', 'saving', 'USD');
-
-    await api()
-      .post('/incomes', {
-        accountId: firstUsd,
-        amount: 10,
-        transactionDate: '2026-09-01',
-      })
-      .expect(201);
-    await api()
-      .post('/incomes', {
-        accountId: rub,
-        amount: 100,
-        transactionDate: '2026-09-01',
-      })
-      .expect(201);
-    const revenue = (await api().get('/incomes/revenue').expect(200)).body as {
-      totalRevenue: number | null;
-      currencies: Array<{ currency: string; totalRevenue: number }>;
-    };
-    expect(revenue.totalRevenue).toBeNull();
-    expect(revenue.currencies).toEqual(
-      expect.arrayContaining([
-        { currency: 'RUB', totalRevenue: 100 },
-        { currency: 'USD', totalRevenue: 10 },
-      ]),
-    );
-
-    expect((await api().get('/users/me').expect(200)).body).toMatchObject({
-      defaultCurrency: 'USD',
-      defaultAccountId: firstUsd,
-    });
-    expect(
-      (await api().get('/accounts?currency=USD').expect(200)).body,
-    ).toHaveLength(4);
-    await api()
-      .patch(`/accounts/${secondUsd}`, { currency: 'RUB' })
-      .expect(400);
-
-    await api().patch('/users/me', { defaultCurrency: 'rub' }).expect(200);
-    expect((await api().get('/users/me').expect(200)).body).toMatchObject({
-      defaultCurrency: 'RUB',
-      defaultAccountId: null,
-    });
-    await api()
-      .patch('/users/me', { defaultCurrency: 'RUB', defaultAccountId: rub })
-      .expect(200);
-    await api()
-      .patch('/users/me', {
-        defaultCurrency: 'USD',
-        defaultAccountId: secondUsd,
-      })
-      .expect(200);
-    await api().patch('/users/me', { defaultCurrency: 'ZZZ' }).expect(400);
-
-    await api().post(`/accounts/${secondUsd}/archive`).expect(204);
-    expect((await api().get('/users/me').expect(200)).body).toMatchObject({
-      defaultCurrency: 'USD',
-      defaultAccountId: null,
-    });
-    await api()
-      .post('/incomes', {
-        accountId: secondUsd,
-        amount: 1,
-        transactionDate: '2026-09-01',
-      })
-      .expect(404);
-    await api(1).get(`/accounts/${firstUsd}`).expect(404);
-    await api(1)
-      .post('/incomes', {
-        accountId: firstUsd,
-        amount: 1,
-        transactionDate: '2026-09-01',
-      })
-      .expect(404);
-  });
-
   it('keeps a cross-currency transfer atomic, editable and reversible', async () => {
     const rub = await account('RUB main', 'balance', 'RUB');
     const usd = await account('USD reserve', 'saving', 'USD');
@@ -166,7 +78,6 @@ describe('Personal multicurrency finances (real MongoDB replica set)', () => {
         transactionDate: '2026-09-01',
       })
       .expect(201);
-
     await api()
       .post('/transfers', {
         sourceAccountId: rub,
@@ -185,7 +96,6 @@ describe('Personal multicurrency finances (real MongoDB replica set)', () => {
         transactionDate: '2026-09-10',
       })
       .expect(400);
-
     const created = await api()
       .post('/transfers', {
         sourceAccountId: rub,
@@ -206,7 +116,13 @@ describe('Personal multicurrency finances (real MongoDB replica set)', () => {
       },
     });
     expect(
-      (created.body as { effectiveRate: { rate: number } }).effectiveRate.rate,
+      (
+        created.body as {
+          effectiveRate: {
+            rate: number;
+          };
+        }
+      ).effectiveRate.rate,
     ).toBeCloseTo(1 / 90);
     expect(
       (await api().get(`/transfers/${transferId}`).expect(200)).body,
@@ -229,7 +145,6 @@ describe('Personal multicurrency finances (real MongoDB replica set)', () => {
     ).toMatchObject({
       amount: 1000,
     });
-
     const report = await api()
       .get('/reports/months?fromDate=2026-09-01&toDate=2026-09-30')
       .expect(200);
@@ -259,7 +174,6 @@ describe('Personal multicurrency finances (real MongoDB replica set)', () => {
         }),
       ]),
     );
-
     const updated = await api()
       .patch(`/transfers/${transferId}`, {
         sourceAmount: 94500,
@@ -277,7 +191,6 @@ describe('Personal multicurrency finances (real MongoDB replica set)', () => {
     ).toMatchObject({
       amount: 5500,
     });
-
     const deletions = await Promise.all([
       api().delete(`/transfers/${transferId}`),
       api().delete(`/transfers/${transferId}`),
@@ -294,7 +207,6 @@ describe('Personal multicurrency finances (real MongoDB replica set)', () => {
       amount: 0,
     });
   });
-
   it('isolates limits, plans and debts by declared currency', async () => {
     const rub = await account('RUB main', 'balance', 'RUB', 1000);
     const usd = await account('USD main', 'balance', 'USD', 1000);
@@ -336,7 +248,6 @@ describe('Personal multicurrency finances (real MongoDB replica set)', () => {
         expect.objectContaining({ currency: 'USD', rest: 400 }),
       ]),
     );
-
     const planId = idOf(
       await api()
         .post('/plans', {
@@ -354,14 +265,12 @@ describe('Personal multicurrency finances (real MongoDB replica set)', () => {
         closingDate: '2026-09-15',
       })
       .expect(400);
-
     const debtId = idOf(
       await api()
         .post('/debts', {
           currency: 'USD',
           debtor: 'Friend',
           principalAmount: 100,
-          remainingAmount: 100,
         })
         .expect(201),
     );

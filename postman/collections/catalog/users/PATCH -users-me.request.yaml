@@ -2,8 +2,8 @@ $kind: http-request
 name: PATCH /users/me
 description: |-
   Source: src/modules/users/users.controller.ts
-  Optional body fields: firstName, lastName, email, description, defaultCurrency, defaultAccountId
-url: "{{base_url}}/users/me"
+  Optional body fields: firstName, lastName, email, description
+url: '{{base_url}}/users/me'
 method: PATCH
 headers:
   Accept: application/json
@@ -15,9 +15,7 @@ body:
       "firstName": "Postman",
       "lastName": "Tester",
       "email": "{{email}}",
-      "description": "Postman test",
-      "defaultCurrency": "{{currency}}",
-      "defaultAccountId": "{{default_account_id}}"
+      "description": "Postman test"
     }
 scripts:
   - type: afterResponse

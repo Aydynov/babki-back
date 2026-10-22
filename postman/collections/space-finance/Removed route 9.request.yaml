@@ -1,0 +1,12 @@
+$kind: http-request
+name: Removed route /reports/months
+url: '{{base_url}}/reports/months'
+method: GET
+headers:
+  Accept: application/json
+order: 18009
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |
+      pm.test('HTTP 404', () => pm.response.to.have.status(404));

@@ -3,7 +3,7 @@ name: POST /auth/login
 description: |-
   Source: src/modules/auth/auth.controller.ts
   Optional body fields:
-url: "{{base_url}}/auth/login"
+url: '{{base_url}}/auth/login'
 method: POST
 headers:
   Accept: application/json

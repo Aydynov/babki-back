@@ -3,7 +3,7 @@ name: POST /auth/register
 description: |-
   Source: src/modules/auth/auth.controller.ts
   Optional body fields: notes
-url: "{{base_url}}/auth/register"
+url: '{{base_url}}/auth/register'
 method: POST
 headers:
   Accept: application/json
@@ -15,8 +15,7 @@ body:
       "firstName": "Postman",
       "lastName": "Tester",
       "email": "{{email}}",
-      "password": "{{password}}",
-      "currency": "{{currency}}"
+      "password": "{{password}}"
     }
 auth:
   type: noauth

@@ -1,25 +1,24 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
+import { APP_GUARD } from '@nestjs/core';
 import { MongooseModule } from '@nestjs/mongoose';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import configuration from './config/configuration';
 import { AccountsSnapshotsModule } from './modules/accounts-snapshots/accounts-snapshots.module';
-import { ExpenseLimitsModule } from './modules/expense-limits/expense-limits.module';
-import { TransactionsModule } from './modules/transactions/transactions.module';
-import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
-import { AuthModule } from './modules/auth/auth.module';
 import { AccountsModule } from './modules/accounts/accounts.module';
+import { AuthModule } from './modules/auth/auth.module';
+import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
 import { DebtTransactionsModule } from './modules/debt-transactions/debt-transactions.module';
 import { DebtsModule } from './modules/debts/debts.module';
 import { ExpenseCategoriesModule } from './modules/expense-categories/expense-categories.module';
-import { ReportsModule } from './modules/reports/reports.module';
-import { UsersModule } from './modules/users/users.module';
+import { ExpenseLimitsModule } from './modules/expense-limits/expense-limits.module';
 import { PlansModule } from './modules/plans/plans.module';
-import { GroupFinancesModule } from './modules/group-finances/group-finances.module';
-import { GroupsModule } from './modules/groups/groups.module';
-import { APP_GUARD } from '@nestjs/core';
-
+import { ReportsModule } from './modules/reports/reports.module';
+import { SpaceFinancesModule } from './modules/space-finances/space-finances.module';
+import { SpacesModule } from './modules/spaces/spaces.module';
+import { TransactionsModule } from './modules/transactions/transactions.module';
+import { UsersModule } from './modules/users/users.module';
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -43,8 +42,8 @@ import { APP_GUARD } from '@nestjs/core';
     DebtTransactionsModule,
     ExpenseLimitsModule,
     ReportsModule,
-    GroupsModule,
-    GroupFinancesModule,
+    SpacesModule,
+    SpaceFinancesModule,
   ],
   controllers: [AppController],
   providers: [

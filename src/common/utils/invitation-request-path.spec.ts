@@ -2,36 +2,36 @@ import { invitationRequestPath } from './invitation-request-path';
 
 describe('invitationRequestPath', () => {
   it.each([
-    ['/group-invitations/preview?token=secret', '/group-invitations/preview'],
+    ['/space-invitations/preview?token=secret', '/space-invitations/preview'],
     [
-      '/api/v1/group-invitations/accept?token=secret',
-      '/api/v1/group-invitations/accept',
+      '/api/v1/space-invitations/accept?token=secret',
+      '/api/v1/space-invitations/accept',
     ],
     [
-      '/custom/prefix/GROUP-INVITATIONS/PREVIEW/?anything=secret',
-      '/custom/prefix/GROUP-INVITATIONS/PREVIEW/',
+      '/custom/prefix/SPACE-INVITATIONS/PREVIEW/?anything=secret',
+      '/custom/prefix/SPACE-INVITATIONS/PREVIEW/',
     ],
     [
-      '/group-invitations/ACCEPT/?token=secret?more=secret',
-      '/group-invitations/ACCEPT/',
+      '/space-invitations/ACCEPT/?token=secret?more=secret',
+      '/space-invitations/ACCEPT/',
     ],
-    ['/api/v1/group-invitations/preview', '/api/v1/group-invitations/preview'],
+    ['/api/v1/space-invitations/preview', '/api/v1/space-invitations/preview'],
     ['/api/v1/accounts?sort=name', '/api/v1/accounts?sort=name'],
     [
-      '/group-invitations/preview-extra?token=secret',
-      '/group-invitations/preview-extra?token=secret',
+      '/space-invitations/preview-extra?token=secret',
+      '/space-invitations/preview-extra?token=secret',
     ],
     [
-      '/not-group-invitations/accept?token=secret',
-      '/not-group-invitations/accept?token=secret',
+      '/not-space-invitations/accept?token=secret',
+      '/not-space-invitations/accept?token=secret',
     ],
     [
-      '/group-invitations/accept/history?sort=date',
-      '/group-invitations/accept/history?sort=date',
+      '/space-invitations/accept/history?sort=date',
+      '/space-invitations/accept/history?sort=date',
     ],
     [
-      '/groups?redirect=/group-invitations/accept&token=secret',
-      '/groups?redirect=/group-invitations/accept&token=secret',
+      '/spaces?redirect=/space-invitations/accept&token=secret',
+      '/spaces?redirect=/space-invitations/accept&token=secret',
     ],
   ])('returns safe metadata for %s', (url, expected) => {
     expect(invitationRequestPath(url)).toBe(expected);

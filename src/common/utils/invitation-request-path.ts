@@ -1,6 +1,6 @@
 /** Keeps invitation query secrets out of application logs and error metadata. */
 export function isInvitationRequest(url: string): boolean {
-  return /\/group-invitations\/(preview|accept)\/?$/i.test(
+  return /\/space-invitations\/(preview|accept)\/?$/i.test(
     url.split('?', 1)[0],
   );
 }

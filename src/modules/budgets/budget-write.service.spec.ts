@@ -3,12 +3,11 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { ClientSession, Connection, Types } from 'mongoose';
-import { GroupsAccessService } from '../groups/groups-access.service';
+import { SpacesAccessService } from '../spaces/spaces-access.service';
 import { BudgetWriteService } from './budget-write.service';
-
 describe('budget transaction boundary', () => {
-  const ownerId = new Types.ObjectId();
-  const group = {
+  const spaceId = new Types.ObjectId();
+  const space = {
     serializeMutation: jest.fn(),
     requireMember: jest.fn(),
     requirePermission: jest.fn(),
@@ -20,15 +19,14 @@ describe('budget transaction boundary', () => {
   const connection = { startSession: jest.fn(async () => session) };
   const service = new BudgetWriteService(
     connection as unknown as Connection,
-    group as unknown as GroupsAccessService,
+    space as unknown as SpacesAccessService,
   );
   beforeEach(() => jest.clearAllMocks());
-
   it('adopts the caller session without starting or ending another transaction', async () => {
     const supplied = {} as ClientSession;
     const result = await service.run(
-      { ownerType: 'user', ownerId },
-      String(ownerId),
+      { spaceId },
+      String(spaceId),
       async (active) => {
         expect(active).toBe(supplied);
         return 42;
@@ -40,27 +38,48 @@ describe('budget transaction boundary', () => {
     expect(connection.startSession).not.toHaveBeenCalled();
     expect(session.endSession).not.toHaveBeenCalled();
   });
-
-  it('keeps personal failures and group HTTP failures while mapping group storage errors', async () => {
+  it('preserves space HTTP failures while mapping storage errors', async () => {
     const storageError = new Error('Storage unavailable');
     const fail = async () => {
       throw storageError;
     };
     await expect(
-      service.run({ ownerType: 'user', ownerId }, String(ownerId), fail),
-    ).rejects.toBe(storageError);
-    await expect(
-      service.run({ ownerType: 'group', ownerId }, String(ownerId), fail),
+      service.run({ spaceId }, String(spaceId), fail),
     ).rejects.toBeInstanceOf(ServiceUnavailableException);
     const denied = new ForbiddenException();
-    group.requireMember.mockRejectedValueOnce(denied);
-    await expect(
-      service.run(
-        { ownerType: 'group', ownerId },
-        String(ownerId),
-        async () => 1,
-      ),
-    ).rejects.toBe(denied);
-    expect(session.endSession).toHaveBeenCalledTimes(3);
+    const work = jest.fn(async () => 1);
+    space.requireMember.mockRejectedValueOnce(denied);
+    await expect(service.run({ spaceId }, String(spaceId), work)).rejects.toBe(
+      denied,
+    );
+    expect(work).not.toHaveBeenCalled();
+    expect(session.endSession).toHaveBeenCalledTimes(2);
+  });
+  it('checks current permission after serializing the space before executing money writes', async () => {
+    const order: string[] = [];
+    space.serializeMutation.mockImplementationOnce(async () => {
+      order.push('serialize');
+    });
+    space.requirePermission.mockImplementationOnce(async () => {
+      order.push('permission');
+    });
+    await service.run(
+      { spaceId },
+      String(spaceId),
+      async (active) => {
+        expect(active).toBe(session);
+        order.push('write');
+      },
+      'manageTransactions',
+    );
+    expect(order).toEqual(['serialize', 'permission', 'write']);
+    expect(space.requirePermission).toHaveBeenCalledWith(
+      String(spaceId),
+      String(spaceId),
+      'manageTransactions',
+      session,
+    );
+    expect(space.requireMember).not.toHaveBeenCalled();
+    expect(session.endSession).toHaveBeenCalledTimes(1);
   });
 });

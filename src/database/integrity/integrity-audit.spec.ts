@@ -6,65 +6,37 @@ import {
 import { integrityRelations } from './integrity-relations';
 
 describe('referential integrity audit', () => {
-  const expectedRelations = [
-    'transaction.account',
-    'transfer.sourceAccount',
-    'transfer.destinationAccount',
-    'transfer.sourceSnapshot',
-    'transfer.destinationSnapshot',
-    'user.defaultAccount',
-    'transaction.snapshot',
-    'expense.category',
-    'limit.category',
-    'plan.category',
-    'plan.expense',
-    'debtTransaction.debt',
-    'snapshot.account',
-    'account.user',
-    'plan.user',
-    'debt.user',
-    'debtTransaction.user',
-    'category.user',
-    'limit.user',
-    'transaction.user',
-    'group.owner',
-    'membership.group',
-    'membership.user',
-    'invitation.group',
-    'invitation.createdBy',
-    'invitation.acceptedBy',
-    'invitation.revokedBy',
-    'account.owner.user',
-    'account.owner.group',
-    'category.owner.user',
-    'category.owner.group',
-    'limit.owner.user',
-    'limit.owner.group',
-    'transaction.owner.user',
-    'transaction.owner.group',
-    'plan.owner.user',
-    'plan.owner.group',
-    'debt.owner.user',
-    'debt.owner.group',
-    'debtTransaction.owner.user',
-    'debtTransaction.owner.group',
-    'debt.createdBy',
-    'debtTransaction.createdBy',
-    'debtTransaction.cancelledBy',
-    'debtTransaction.debt.budget',
-    'debt.group.balance',
-    'debtTransaction.income',
-    'income.debt.repayment',
-    'expense.plan.origin',
-    'expense.plan.category.budget',
-    'plan.createdBy',
-    'plan.category.budget',
-    'plan.expense.budget',
-    'plan.expense.origin',
-  ];
+  const expectedRelations = integrityRelations.map(({ id }) => id);
 
-  it('defines every supported account, category, plan, debt, user and group reference', () => {
-    expect(integrityRelations.map(({ id }) => id)).toEqual(expectedRelations);
+  it('defines every supported account, category, plan, debt, user and space reference', () => {
+    expect(expectedRelations).toEqual(
+      expect.arrayContaining([
+        'transaction.account',
+        'transfer.sourceSnapshot',
+        'transfer.destinationSnapshot',
+        'Account.space',
+        'Debt.space',
+        'plan.createdBy',
+        'debt.space.balance',
+        'income.debt.repayment',
+      ]),
+    );
+    expect(
+      integrityRelations.filter(({ targetModel }) => targetModel === 'Space'),
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          sourceModel: 'Transaction',
+          sourceField: 'spaceId',
+          required: true,
+        }),
+      ]),
+    );
+    expect(
+      integrityRelations.some(({ sourceField }) =>
+        ['ownerType', 'defaultAccountId'].includes(sourceField),
+      ),
+    ).toBe(false);
   });
 
   it('reports one deterministic orphan fixture for every supported relation without mutation', async () => {

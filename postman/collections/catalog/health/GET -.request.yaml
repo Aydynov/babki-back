@@ -2,7 +2,7 @@ $kind: http-request
 name: GET /
 description: |
   Source: src/app.controller.ts
-url: "{{base_url}}"
+url: '{{base_url}}'
 method: GET
 headers:
   Accept: application/json

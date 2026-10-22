@@ -1,10 +1,8 @@
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
-import { AccountsLookupService } from './accounts-lookup.service';
 import { Account, AccountsSchema } from './schemas/accounts.schema';
 import { Balance, BalanceSchema } from './schemas/balances.schema';
 import { Saving, SavingsSchema } from './schemas/savings.schema';
-
 @Module({
   imports: [
     MongooseModule.forFeature([
@@ -18,7 +16,6 @@ import { Saving, SavingsSchema } from './schemas/savings.schema';
       },
     ]),
   ],
-  providers: [AccountsLookupService],
-  exports: [AccountsLookupService, MongooseModule],
+  exports: [MongooseModule],
 })
 export class AccountsLookupModule {}

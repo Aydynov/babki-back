@@ -1,0 +1,28 @@
+$kind: http-request
+name: 'PATCH /spaces/:spaceId/expenses/:id'
+description: |-
+  Source: src/modules/space-finances/space-finances.controller.ts
+  Optional body fields: amount, description, categoryId, participantId, merchant, items
+url: '{{base_url}}/spaces/{{space_id}}/expenses/{{space_expense_id}}'
+method: PATCH
+headers:
+  Accept: application/json
+  Content-Type: application/json
+body:
+  type: json
+  content: |-
+    {
+      "amount": 100,
+      "description": "Postman test",
+      "categoryId": "{{space_category_id}}",
+      "participantId": "{{participant_id}}",
+      "merchant": "Postman test",
+      "items": []
+    }
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('HTTP 200', () => pm.response.to.have.status(200));
+      pm.test('JSON response', () => pm.response.to.be.json);
+    language: text/javascript
+order: 27000

@@ -1,12 +1,9 @@
 import { INestApplicationContext } from '@nestjs/common';
-import { DebtsService } from '../../modules/debts/debts.service';
-import { ExpenseLimitsService } from '../../modules/expense-limits/expense-limits.service';
-import { ExpenseCategoriesService } from '../../modules/expense-categories/expense-categories.service';
-import { PlansService } from '../../modules/plans/plans.service';
-import { ExpensesService } from '../../modules/transactions/expenses/expenses.service';
-import { IncomesService } from '../../modules/transactions/incomes/incomes.service';
-import { TransfersService } from '../../modules/transactions/transfers/transfers.service';
-import { TransactionsService } from '../../modules/transactions/transactions/transactions.service';
+import { SpaceDebtsService } from '../../modules/space-finances/space-debts.service';
+import { SpacePlansService } from '../../modules/space-finances/space-plans.service';
+import { SpaceSettingsService } from '../../modules/space-finances/space-settings.service';
+import { SpaceTransactionsService } from '../../modules/space-finances/space-transactions.service';
+import { SpaceTransfersService } from '../../modules/space-finances/space-transfers.service';
 import { CategoryMap } from './03-categories';
 import { seedCategories } from './03-categories';
 import { seedLimits } from './04-limits';
@@ -16,6 +13,7 @@ import { seedPlans } from './07-plans';
 
 const anchorDate = new Date('2030-03-08T18:30:00.000Z');
 const userId = '507f1f77bcf86cd799439011';
+const spaceId = '507f1f77bcf86cd799439099';
 const balanceAccountId = '507f1f77bcf86cd799439012';
 const savingAccountId = '507f1f77bcf86cd799439013';
 const usdBalanceAccountId = '507f1f77bcf86cd799439014';
@@ -36,115 +34,100 @@ function createApp(providers: Map<unknown, unknown>) {
 }
 
 describe('dynamic seed dates', () => {
-  it('creates a 20-month transaction window ending with a full anchor month', async () => {
-    const incomes = {
-      create: jest.fn().mockResolvedValue({ _id: 'income-id' }),
-    };
-    const expenses = { create: jest.fn().mockResolvedValue({}) };
-    const transfers = { create: jest.fn().mockResolvedValue({}) };
-    const transactions = { delete: jest.fn().mockResolvedValue(undefined) };
-    const app = createApp(
-      new Map<unknown, unknown>([
-        [IncomesService, incomes],
-        [ExpensesService, expenses],
-        [TransfersService, transfers],
-        [TransactionsService, transactions],
-      ]),
-    );
-
-    await seedTransactions(
-      app,
-      userId,
-      balanceAccountId,
-      savingAccountId,
-      usdBalanceAccountId,
-      usdSavingAccountId,
-      categories,
-      anchorDate,
-    );
-
-    const calls = [
-      ...incomes.create.mock.calls,
-      ...expenses.create.mock.calls,
-      ...transfers.create.mock.calls,
-    ];
-    const dates = calls
-      .map((call) => (call[1] as { transactionDate: string }).transactionDate)
-      .sort();
-    const anchorMonthCalls = dates.filter((date) => date.startsWith('2030-03'));
-
-    expect(calls).toHaveLength(120);
-    expect(dates[0]).toBe('2028-08-01T00:00:00.000Z');
-    expect(dates.at(-1)).toBe('2030-03-28T00:00:00.000Z');
-    expect(anchorMonthCalls).toHaveLength(9);
-    expect(transactions.delete).toHaveBeenCalledWith(userId, 'income-id');
-  });
-
-  it('creates valid transaction dates for every anchor month', async () => {
-    const incomes = {
-      create: jest.fn().mockResolvedValue({ _id: 'income-id' }),
-    };
-    const expenses = { create: jest.fn().mockResolvedValue({}) };
-    const transfers = { create: jest.fn().mockResolvedValue({}) };
-    const transactions = { delete: jest.fn().mockResolvedValue(undefined) };
-    const app = createApp(
-      new Map<unknown, unknown>([
-        [IncomesService, incomes],
-        [ExpensesService, expenses],
-        [TransfersService, transfers],
-        [TransactionsService, transactions],
-      ]),
-    );
-
-    for (let month = 0; month < 12; month += 1) {
-      await expect(
-        seedTransactions(
-          app,
-          userId,
-          balanceAccountId,
-          savingAccountId,
-          usdBalanceAccountId,
-          usdSavingAccountId,
-          categories,
-          new Date(Date.UTC(2030, month, 8)),
+  it.each(Array.from({ length: 12 }, (_, month) => month))(
+    'creates a deterministic 20-month window for anchor month %s',
+    async (month) => {
+      const transactions = {
+        create: jest.fn().mockResolvedValue({ _id: 'income-id' }),
+        change: jest.fn(),
+      };
+      const transfers = { create: jest.fn() };
+      const app = createApp(
+        new Map<unknown, unknown>([
+          [SpaceTransactionsService, transactions],
+          [SpaceTransfersService, transfers],
+        ]),
+      );
+      const anchor = new Date(Date.UTC(2030, month, 8));
+      await seedTransactions(
+        app,
+        userId,
+        spaceId,
+        balanceAccountId,
+        savingAccountId,
+        usdBalanceAccountId,
+        usdSavingAccountId,
+        categories,
+        anchor,
+      );
+      const dates = [
+        ...transactions.create.mock.calls.map(
+          (call) => (call[3] as { transactionDate: string }).transactionDate,
         ),
-      ).resolves.toBeUndefined();
-    }
-  });
+        ...transfers.create.mock.calls.map(
+          (call) => (call[2] as { transactionDate: string }).transactionDate,
+        ),
+      ].sort();
+      expect(dates).toHaveLength(120);
+      expect(
+        dates.every((date) => Number.isFinite(new Date(date).getTime())),
+      ).toBe(true);
+      expect(dates[0]).toBe(
+        new Date(Date.UTC(2030, month - 19, 1)).toISOString(),
+      );
+      expect(dates.at(-1)).toBe(
+        new Date(Date.UTC(2030, month, 28)).toISOString(),
+      );
+      expect(transactions.change).toHaveBeenCalledWith(
+        spaceId,
+        userId,
+        'income-id',
+        'income',
+      );
+      expect(
+        transactions.create.mock.calls.every(
+          (call) => call[0] === spaceId && call[1] === userId,
+        ),
+      ).toBe(true);
+    },
+  );
 
   it('creates unused and archived category scenarios', async () => {
     const categoryService = {
-      create: jest
+      saveCategory: jest
         .fn()
-        .mockImplementation((_userId: string, dto: { name: string }) => ({
-          _id: dto.name,
-        })),
+        .mockImplementation(
+          (_spaceId: string, _userId: string, dto: { name: string }) => ({
+            _id: dto.name,
+          }),
+        ),
       update: jest.fn().mockResolvedValue({}),
     };
     const app = createApp(
-      new Map<unknown, unknown>([[ExpenseCategoriesService, categoryService]]),
+      new Map<unknown, unknown>([[SpaceSettingsService, categoryService]]),
     );
 
-    const result = await seedCategories(app, userId);
+    const result = await seedCategories(app, userId, spaceId);
 
     expect(Object.keys(result)).toHaveLength(8);
     expect(result['Deletion test: unused']).toBe('Deletion test: unused');
-    expect(categoryService.update).toHaveBeenCalledWith(
+    expect(categoryService.saveCategory).toHaveBeenCalledWith(
+      spaceId,
       userId,
-      'Deletion test: archived',
       { isArchived: true },
+      'Deletion test: archived',
     );
   });
 
   it('creates limits for the anchor month with meaningful remainders', async () => {
-    const limits = { create: jest.fn().mockResolvedValue({}) };
+    const limits = { saveLimit: jest.fn().mockResolvedValue({}) };
     const app = createApp(
-      new Map<unknown, unknown>([[ExpenseLimitsService, limits]]),
+      new Map<unknown, unknown>([[SpaceSettingsService, limits]]),
     );
 
-    await seedLimits(app, userId, categories, anchorDate);
+    await seedLimits(app, userId, spaceId, categories, anchorDate);
 
-    expect(limits.create.mock.calls.map((call) => call[1])).toEqual([
+    expect(limits.saveLimit.mock.calls.map((call) => call[2])).toEqual([
       {
         currency: 'RUB',
         categoryId: categories['Food & Dining'],
@@ -179,37 +162,35 @@ describe('dynamic seed dates', () => {
       repay: jest.fn().mockResolvedValue({}),
       archive: jest.fn().mockResolvedValue(undefined),
     };
-    const app = createApp(new Map<unknown, unknown>([[DebtsService, debts]]));
+    const app = createApp(
+      new Map<unknown, unknown>([[SpaceDebtsService, debts]]),
+    );
 
-    await seedDebts(app, userId, 'account-id', anchorDate);
+    await seedDebts(app, userId, spaceId, anchorDate);
 
-    expect(debts.create.mock.calls[0][1]).toMatchObject({
+    expect(debts.create.mock.calls[0][2]).toMatchObject({
       dueDate: '2030-05-01T00:00:00.000Z',
     });
-    expect(debts.repay.mock.calls.map((call) => call[2])).toEqual([
+    expect(debts.repay.mock.calls.map((call) => call[3])).toEqual([
       {
-        accountId: 'account-id',
         repaymentDate: '2029-11-10T00:00:00.000Z',
         amount: 20000,
         description: 'First repayment',
         isIncome: false,
       },
       {
-        accountId: 'account-id',
         repaymentDate: '2030-01-15T00:00:00.000Z',
         amount: 10000,
         description: 'Second repayment',
         isIncome: false,
       },
       {
-        accountId: 'account-id',
         repaymentDate: '2030-03-05T00:00:00.000Z',
         amount: 5000,
         description: 'Current month repayment',
         isIncome: false,
       },
       {
-        accountId: 'account-id',
         repaymentDate: '2029-12-20T00:00:00.000Z',
         amount: 100000,
         description: 'Full repayment',
@@ -217,7 +198,7 @@ describe('dynamic seed dates', () => {
       },
     ]);
     expect(debts.create).toHaveBeenCalledTimes(4);
-    expect(debts.archive).toHaveBeenCalledWith(userId, 'maria');
+    expect(debts.archive).toHaveBeenCalledWith(spaceId, userId, 'maria');
   });
 
   it('preserves future, overdue, and closed plan scenarios', async () => {
@@ -226,13 +207,15 @@ describe('dynamic seed dates', () => {
       close: jest.fn().mockResolvedValue({}),
       archive: jest.fn().mockResolvedValue(undefined),
     };
-    const app = createApp(new Map<unknown, unknown>([[PlansService, plans]]));
+    const app = createApp(
+      new Map<unknown, unknown>([[SpacePlansService, plans]]),
+    );
 
-    await seedPlans(app, userId, 'account-id', categories, anchorDate);
+    await seedPlans(app, userId, spaceId, 'account-id', categories, anchorDate);
 
     expect(
       plans.create.mock.calls.map(
-        (call) => (call[1] as { targetDate: string }).targetDate,
+        (call) => (call[2] as { targetDate: string }).targetDate,
       ),
     ).toEqual([
       '2030-06-01T00:00:00.000Z',
@@ -244,7 +227,7 @@ describe('dynamic seed dates', () => {
       '2029-12-15T00:00:00.000Z',
       '2029-11-10T00:00:00.000Z',
     ]);
-    expect(plans.close.mock.calls.map((call) => call[2])).toEqual([
+    expect(plans.close.mock.calls.map((call) => call[3])).toEqual([
       { accountId: 'account-id', closingDate: '2030-01-15T00:00:00.000Z' },
       {
         accountId: 'account-id',
@@ -257,6 +240,6 @@ describe('dynamic seed dates', () => {
         amount: 25000,
       },
     ]);
-    expect(plans.archive).toHaveBeenCalledWith(userId, 'plan-id');
+    expect(plans.archive).toHaveBeenCalledWith(spaceId, userId, 'plan-id');
   });
 });

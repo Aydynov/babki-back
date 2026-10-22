@@ -1,0 +1,25 @@
+$kind: http-request
+name: 'PATCH /spaces/:spaceId/transfers/:id'
+description: |-
+  Source: src/modules/space-finances/space-finances.controller.ts
+  Optional body fields: sourceAmount, destinationAmount, description
+url: '{{base_url}}/spaces/{{space_id}}/transfers/{{space_transfer_id}}'
+method: PATCH
+headers:
+  Accept: application/json
+  Content-Type: application/json
+body:
+  type: json
+  content: |-
+    {
+      "sourceAmount": 100,
+      "destinationAmount": 100,
+      "description": "Postman test"
+    }
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('HTTP 200', () => pm.response.to.have.status(200));
+      pm.test('JSON response', () => pm.response.to.be.json);
+    language: text/javascript
+order: 20000

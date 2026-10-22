@@ -1,0 +1,1780 @@
+{
+  "info": {
+    "name": "Babki Space Finance",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Disposable target only. Registers a zero-space user, explicitly creates empty spaces, exercises financial operations and rejects cross-space references and removed routes."
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{access_token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "const base = pm.variables.get('base_url');",
+          "if (!base || !/^https?:\\/\\//.test(base)) throw new Error('Select an environment and set base_url');",
+          "if (!pm.variables.get('run_id')) pm.variables.set('run_id', pm.variables.replaceIn('{{$guid}}'));",
+          "pm.variables.set('now', new Date().toISOString());",
+          "pm.variables.set('future_date', new Date(Date.now() + 30 * 86400000).toISOString());",
+          "if (!['GET','HEAD','OPTIONS'].includes(pm.request.method) && pm.variables.get('allow_mutations') !== 'true') {",
+          "  pm.execution.skipRequest();",
+          "  throw new Error('Set allow_mutations=true only for a disposable test target');",
+          "}",
+          "if (!pm.variables.get('workflow_initialized')) {",
+          "  pm.variables.set('workflow_initialized', 'true');",
+          "  pm.variables.set('email', 'postman-' + pm.variables.get('run_id') + '@example.test');",
+          "  pm.variables.set('password', pm.variables.replaceIn('{{$guid}}') + 'Aa1!');",
+          "}"
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "if (pm.response.code >= 200 && pm.response.code < 300 && /\\/spaces\\/[^/]+\\/(accounts|incomes|expenses|transactions|transfers|expense-categories|expense-limits|plans|debts)(?:\\/|$)/.test(pm.variables.replaceIn(pm.request.url.toString())) && pm.response.text()) {",
+          "  const body = pm.response.json();",
+          "  pm.test('Financial DTO omits ownership aliases and storage counters', () => {",
+          "    function check(value) {",
+          "      if (Array.isArray(value)) return value.forEach(check);",
+          "      if (!value || typeof value !== 'object') return;",
+          "      ['ownerType', 'ownerId', 'mutationVersion', 'lockVersion', '__v'].forEach(key => pm.expect(value).not.to.have.property(key));",
+          "      Object.values(value).forEach(check);",
+          "    }",
+          "    check(body);",
+          "  });",
+          "  if (body._id) pm.test('Financial resource belongs to selected space', () => pm.expect(body.spaceId).to.equal(pm.variables.get('space_id')));",
+          "}"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "currency",
+      "value": "RUB",
+      "type": "string"
+    },
+    {
+      "key": "now",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "future_date",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "from_date",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "to_date",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "run_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "challenge_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "second_factor_code",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "invitation_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "account_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "category_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "space_account_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "space_source_account_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "space_destination_account_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "space_category_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "participant_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "space_categories",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "user_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "categories",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "snapshot_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "source_account_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "destination_account_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "debt_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "debt_transaction_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "limit_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "space_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "space_debt_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "space_repayment_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "space_transfer_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "space_expense_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "space_income_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "space_limit_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "space_plan_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "space_invitation_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "plan_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "expense_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "income_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "transaction_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "transfer_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "other_space_id",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "POST /auth/register",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/auth/register",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "auth",
+            "register"
+          ],
+          "query": []
+        },
+        "description": "Source: src/modules/auth/auth.controller.ts\nOptional body fields: notes",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"firstName\": \"Postman\",\n  \"lastName\": \"Runner\",\n  \"email\": \"{{email}}\",\n  \"password\": \"{{password}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 201', () => pm.response.to.have.status(201));",
+              "pm.test('JSON response', () => pm.response.to.be.json);",
+              "if (pm.response.code === 201) {",
+              "  const body = pm.response.json();",
+              "  if (body.accessToken) pm.variables.set('access_token', body.accessToken);",
+              "  else { pm.variables.unset('access_token'); if (body.challengeToken) pm.variables.set('challenge_token', body.challengeToken); }",
+              "}"
+            ]
+          }
+        }
+      ],
+      "response": []
+    },
+    {
+      "name": "Registration starts without spaces",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/spaces",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "spaces"
+          ],
+          "query": []
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+              "pm.test('No automatic space', () => pm.expect(pm.response.json().items).to.deep.equal([]));"
+            ]
+          }
+        }
+      ],
+      "response": []
+    },
+    {
+      "name": "GET /users/me",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/users/me",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "users",
+            "me"
+          ],
+          "query": []
+        },
+        "description": "Source: src/modules/users/users.controller.ts\n"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+              "pm.test('JSON response', () => pm.response.to.be.json);"
+            ]
+          }
+        }
+      ],
+      "response": []
+    },
+    {
+      "name": "Create empty space",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/spaces",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "spaces"
+          ],
+          "query": []
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"Postman {{run_id}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 201', () => pm.response.to.have.status(201));",
+              "if(pm.response.code===201) pm.variables.set('space_id', pm.response.json().id || pm.response.json()._id); "
+            ]
+          }
+        }
+      ],
+      "response": []
+    },
+    {
+      "name": "New space has no accounts",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/spaces/{{space_id}}/accounts",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "spaces",
+            "{{space_id}}",
+            "accounts"
+          ],
+          "query": []
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+              "pm.test('No automatic account', () => pm.expect(pm.response.json()).to.deep.equal([]));"
+            ]
+          }
+        }
+      ],
+      "response": []
+    },
+    {
+      "name": "Create second space",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/spaces",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "spaces"
+          ],
+          "query": []
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"Other {{run_id}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 201', () => pm.response.to.have.status(201));",
+              "if(pm.response.code===201) pm.variables.set('other_space_id', pm.response.json().id || pm.response.json()._id);"
+            ]
+          }
+        }
+      ],
+      "response": []
+    },
+    {
+      "name": "Unknown account field rejected",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/spaces/{{space_id}}/accounts",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "spaces",
+            "{{space_id}}",
+            "accounts"
+          ],
+          "query": []
+        },
+        "description": "Source: src/modules/accounts/accounts/accounts.controller.ts\nOptional body fields: amount, openedAt",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"Invalid\",\n  \"type\": \"balance\",\n  \"currency\": \"RUB\",\n  \"unexpected\": true\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Unknown field rejected', () => pm.response.to.have.status(400));",
+              "pm.test('Validation details', () => {const e=pm.response.json(); pm.expect(e.statusCode).to.equal(400); pm.expect(e.message.join(' ')).to.include('unexpected');});"
+            ]
+          }
+        }
+      ],
+      "response": []
+    },
+    {
+      "name": "POST /spaces/:spaceId/accounts",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/spaces/{{space_id}}/accounts",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "spaces",
+            "{{space_id}}",
+            "accounts"
+          ],
+          "query": []
+        },
+        "description": "Source: src/modules/accounts/accounts/accounts.controller.ts\nOptional body fields: amount, openedAt",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"Postman {{run_id}}\",\n  \"type\": \"balance\",\n  \"currency\": \"RUB\",\n  \"amount\": 1000\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 201', () => pm.response.to.have.status(201));",
+              "pm.test('JSON response', () => pm.response.to.be.json);",
+              "if (pm.response.code === 201) {const b=pm.response.json(); if (b._id || b.id) pm.variables.set('account_id', b._id || b.id);}"
+            ]
+          }
+        }
+      ],
+      "response": []
+    },
+    {
+      "name": "POST /spaces/:spaceId/expense-categories",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/spaces/{{space_id}}/expense-categories",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "spaces",
+            "{{space_id}}",
+            "expense-categories"
+          ],
+          "query": []
+        },
+        "description": "Source: src/modules/expense-categories/expense-categories.controller.ts\nOptional body fields: description, color, isArchived",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"Postman {{run_id}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 201', () => pm.response.to.have.status(201));",
+              "pm.test('JSON response', () => pm.response.to.be.json);",
+              "if (pm.response.code === 201) {const b=pm.response.json(); if (b._id || b.id) pm.variables.set('category_id', b._id || b.id);}"
+            ]
+          }
+        }
+      ],
+      "response": []
+    },
+    {
+      "name": "POST /spaces/:spaceId/incomes",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/spaces/{{space_id}}/incomes",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "spaces",
+            "{{space_id}}",
+            "incomes"
+          ],
+          "query": []
+        },
+        "description": "Source: src/modules/transactions/incomes/incomes.controller.ts\nOptional body fields: description, source",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"accountId\": \"{{account_id}}\",\n  \"amount\": 100,\n  \"transactionDate\": \"{{now}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 201', () => pm.response.to.have.status(201));",
+              "pm.test('JSON response', () => pm.response.to.be.json);",
+              "if (pm.response.code === 201) {const b=pm.response.json(); if (b._id || b.id) pm.variables.set('income_id', b._id || b.id);}",
+              "if(pm.response.code===201) pm.variables.set('income_id',pm.response.json()._id);"
+            ]
+          }
+        }
+      ],
+      "response": []
+    },
+    {
+      "name": "POST /spaces/:spaceId/expenses",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/spaces/{{space_id}}/expenses",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "spaces",
+            "{{space_id}}",
+            "expenses"
+          ],
+          "query": []
+        },
+        "description": "Source: src/modules/transactions/expenses/expenses.controller.ts\nOptional body fields: description, merchant, items",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"accountId\": \"{{account_id}}\",\n  \"categoryId\": \"{{category_id}}\",\n  \"amount\": 100,\n  \"transactionDate\": \"{{now}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 201', () => pm.response.to.have.status(201));",
+              "pm.test('JSON response', () => pm.response.to.be.json);",
+              "if (pm.response.code === 201) {const b=pm.response.json(); if (b._id || b.id) pm.variables.set('expense_id', b._id || b.id);}",
+              "if(pm.response.code===201) pm.variables.set('expense_id',pm.response.json()._id);"
+            ]
+          }
+        }
+      ],
+      "response": []
+    },
+    {
+      "name": "GET /spaces/:spaceId/accounts/:accountId",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/spaces/{{space_id}}/accounts/{{account_id}}",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "spaces",
+            "{{space_id}}",
+            "accounts",
+            "{{account_id}}"
+          ],
+          "query": []
+        },
+        "description": "Source: src/modules/accounts/accounts/accounts.controller.ts\n"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+              "pm.test('JSON response', () => pm.response.to.be.json);",
+              "pm.test('Income and expense net balance', () => pm.expect(pm.response.json().amount).to.equal(1000));"
+            ]
+          }
+        }
+      ],
+      "response": []
+    },
+    {
+      "name": "Missing membership is hidden",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/spaces/000000000000000000000001/accounts",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "spaces",
+            "000000000000000000000001",
+            "accounts"
+          ],
+          "query": []
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 404', () => pm.response.to.have.status(404));",
+              ""
+            ]
+          }
+        }
+      ],
+      "response": []
+    },
+    {
+      "name": "Other space cannot read account",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/spaces/{{other_space_id}}/accounts/{{account_id}}",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "spaces",
+            "{{other_space_id}}",
+            "accounts",
+            "{{account_id}}"
+          ],
+          "query": []
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 404', () => pm.response.to.have.status(404));",
+              ""
+            ]
+          }
+        }
+      ],
+      "response": []
+    },
+    {
+      "name": "Other space cannot credit account",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/spaces/{{other_space_id}}/incomes",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "spaces",
+            "{{other_space_id}}",
+            "incomes"
+          ],
+          "query": []
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"accountId\": \"{{account_id}}\",\n  \"amount\": 1,\n  \"transactionDate\": \"{{now}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 404', () => pm.response.to.have.status(404));",
+              ""
+            ]
+          }
+        }
+      ],
+      "response": []
+    },
+    {
+      "name": "GET /spaces/:spaceId/transactions",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/spaces/{{space_id}}/transactions?",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "spaces",
+            "{{space_id}}",
+            "transactions"
+          ],
+          "query": [
+            {
+              "key": "page",
+              "value": "1",
+              "disabled": true,
+              "description": "Optional; enable when needed"
+            },
+            {
+              "key": "limit",
+              "value": "20",
+              "disabled": true,
+              "description": "Optional; enable when needed"
+            },
+            {
+              "key": "snapshotId",
+              "value": "{{snapshot_id}}",
+              "disabled": true,
+              "description": "Optional; enable when needed"
+            },
+            {
+              "key": "accountId",
+              "value": "{{account_id}}",
+              "disabled": true,
+              "description": "Optional; enable when needed"
+            },
+            {
+              "key": "currency",
+              "value": "{{currency}}",
+              "disabled": true,
+              "description": "Optional; enable when needed"
+            },
+            {
+              "key": "fromDate",
+              "value": "{{now}}",
+              "disabled": true,
+              "description": "Optional; enable when needed"
+            },
+            {
+              "key": "toDate",
+              "value": "{{future_date}}",
+              "disabled": true,
+              "description": "Optional; enable when needed"
+            },
+            {
+              "key": "transactionType",
+              "value": "income",
+              "disabled": true,
+              "description": "Optional; enable when needed"
+            }
+          ]
+        },
+        "description": "Source: src/modules/transactions/transactions/transactions.controller.ts\n"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+              "pm.test('JSON response', () => pm.response.to.be.json);"
+            ]
+          }
+        }
+      ],
+      "response": []
+    },
+    {
+      "name": "GET /spaces/:spaceId/reports/months",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/spaces/{{space_id}}/reports/months?",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "spaces",
+            "{{space_id}}",
+            "reports",
+            "months"
+          ],
+          "query": [
+            {
+              "key": "categories",
+              "value": "",
+              "disabled": true,
+              "description": "Optional; enable when needed"
+            },
+            {
+              "key": "fromDate",
+              "value": "{{now}}",
+              "disabled": true,
+              "description": "Optional; enable when needed"
+            },
+            {
+              "key": "toDate",
+              "value": "{{future_date}}",
+              "disabled": true,
+              "description": "Optional; enable when needed"
+            }
+          ]
+        },
+        "description": "Source: src/modules/reports/reports.controller.ts\n"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+              "pm.test('JSON response', () => pm.response.to.be.json);"
+            ]
+          }
+        }
+      ],
+      "response": []
+    },
+    {
+      "name": "Delete created expense",
+      "request": {
+        "method": "DELETE",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/spaces/{{space_id}}/expenses/{{expense_id}}",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "spaces",
+            "{{space_id}}",
+            "expenses",
+            "{{expense_id}}"
+          ],
+          "query": []
+        },
+        "description": "Source: src/modules/space-finances/space-finances.controller.ts\n"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 204', () => pm.response.to.have.status(204));",
+              "pm.test('Empty response', () => pm.expect(pm.response.text()).to.equal(''));"
+            ]
+          }
+        }
+      ],
+      "response": []
+    },
+    {
+      "name": "Delete created income",
+      "request": {
+        "method": "DELETE",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/spaces/{{space_id}}/incomes/{{income_id}}",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "spaces",
+            "{{space_id}}",
+            "incomes",
+            "{{income_id}}"
+          ],
+          "query": []
+        },
+        "description": "Source: src/modules/space-finances/space-finances.controller.ts\n"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 204', () => pm.response.to.have.status(204));",
+              "pm.test('Empty response', () => pm.expect(pm.response.text()).to.equal(''));"
+            ]
+          }
+        }
+      ],
+      "response": []
+    },
+    {
+      "name": "Category history prevents deletion",
+      "request": {
+        "method": "DELETE",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/spaces/{{space_id}}/expense-categories/{{category_id}}",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "spaces",
+            "{{space_id}}",
+            "expense-categories",
+            "{{category_id}}"
+          ],
+          "query": []
+        },
+        "description": "Source: src/modules/expense-categories/expense-categories.controller.ts\n"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Category history is preserved', () => pm.response.to.have.status(409));"
+            ]
+          }
+        }
+      ],
+      "response": []
+    },
+    {
+      "name": "PATCH /spaces/:spaceId/expense-categories/:categoryId",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/spaces/{{space_id}}/expense-categories/{{category_id}}",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "spaces",
+            "{{space_id}}",
+            "expense-categories",
+            "{{category_id}}"
+          ],
+          "query": []
+        },
+        "description": "Source: src/modules/expense-categories/expense-categories.controller.ts\nOptional body fields: name, description, color, isArchived",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"isArchived\": true\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+              "pm.test('JSON response', () => pm.response.to.be.json);"
+            ]
+          }
+        }
+      ],
+      "response": []
+    },
+    {
+      "name": "POST /spaces/:spaceId/accounts/:accountId/archive",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/spaces/{{space_id}}/accounts/{{account_id}}/archive",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "spaces",
+            "{{space_id}}",
+            "accounts",
+            "{{account_id}}",
+            "archive"
+          ],
+          "query": []
+        },
+        "description": "Source: src/modules/accounts/accounts/accounts.controller.ts\n"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 204', () => pm.response.to.have.status(204));",
+              "pm.test('Empty response', () => pm.expect(pm.response.text()).to.equal(''));"
+            ]
+          }
+        }
+      ],
+      "response": []
+    },
+    {
+      "name": "Removed route /accounts",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/accounts",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "accounts"
+          ],
+          "query": []
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 404', () => pm.response.to.have.status(404));",
+              ""
+            ]
+          }
+        }
+      ],
+      "response": []
+    },
+    {
+      "name": "Removed route /incomes",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/incomes",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "incomes"
+          ],
+          "query": []
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 404', () => pm.response.to.have.status(404));",
+              ""
+            ]
+          }
+        }
+      ],
+      "response": []
+    },
+    {
+      "name": "Removed route /expenses",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/expenses",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "expenses"
+          ],
+          "query": []
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 404', () => pm.response.to.have.status(404));",
+              ""
+            ]
+          }
+        }
+      ],
+      "response": []
+    },
+    {
+      "name": "Removed route /transactions",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/transactions",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "transactions"
+          ],
+          "query": []
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 404', () => pm.response.to.have.status(404));",
+              ""
+            ]
+          }
+        }
+      ],
+      "response": []
+    },
+    {
+      "name": "Removed route /transfers",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/transfers",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "transfers"
+          ],
+          "query": []
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 404', () => pm.response.to.have.status(404));",
+              ""
+            ]
+          }
+        }
+      ],
+      "response": []
+    },
+    {
+      "name": "Removed route /expense-categories",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/expense-categories",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "expense-categories"
+          ],
+          "query": []
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 404', () => pm.response.to.have.status(404));",
+              ""
+            ]
+          }
+        }
+      ],
+      "response": []
+    },
+    {
+      "name": "Removed route /expense-limits",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/expense-limits",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "expense-limits"
+          ],
+          "query": []
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 404', () => pm.response.to.have.status(404));",
+              ""
+            ]
+          }
+        }
+      ],
+      "response": []
+    },
+    {
+      "name": "Removed route /plans",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/plans",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "plans"
+          ],
+          "query": []
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 404', () => pm.response.to.have.status(404));",
+              ""
+            ]
+          }
+        }
+      ],
+      "response": []
+    },
+    {
+      "name": "Removed route /debts",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/debts",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "debts"
+          ],
+          "query": []
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 404', () => pm.response.to.have.status(404));",
+              ""
+            ]
+          }
+        }
+      ],
+      "response": []
+    },
+    {
+      "name": "Removed route /reports/months",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/reports/months",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "reports",
+            "months"
+          ],
+          "query": []
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 404', () => pm.response.to.have.status(404));",
+              ""
+            ]
+          }
+        }
+      ],
+      "response": []
+    },
+    {
+      "name": "Removed route /groups",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/groups",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "groups"
+          ],
+          "query": []
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 404', () => pm.response.to.have.status(404));",
+              ""
+            ]
+          }
+        }
+      ],
+      "response": []
+    },
+    {
+      "name": "Removed route /groups/{{space_id}}/accounts",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/groups/{{space_id}}/accounts",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "groups",
+            "{{space_id}}",
+            "accounts"
+          ],
+          "query": []
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 404', () => pm.response.to.have.status(404));",
+              ""
+            ]
+          }
+        }
+      ],
+      "response": []
+    },
+    {
+      "name": "Removed invitation route",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/group-invitations/preview",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "group-invitations",
+            "preview"
+          ],
+          "query": []
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"token\": \"removed-route-token\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 404', () => pm.response.to.have.status(404));",
+              ""
+            ]
+          }
+        }
+      ],
+      "response": []
+    }
+  ]
+}

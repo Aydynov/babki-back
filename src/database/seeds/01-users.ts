@@ -1,7 +1,6 @@
 import { INestApplicationContext } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { UsersService } from '../../modules/users/users.service';
-
 export async function seedUsers(app: INestApplicationContext) {
   const usersService = app.get(UsersService);
   const passwordHash = await bcrypt.hash('Test1234!', 12);
@@ -44,7 +43,6 @@ export async function seedUsers(app: INestApplicationContext) {
         firstName: definition.firstName,
         lastName: definition.lastName,
         email: definition.email,
-        defaultCurrency: 'RUB',
       },
       passwordHash,
     );

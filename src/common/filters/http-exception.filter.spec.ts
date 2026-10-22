@@ -1,7 +1,6 @@
 import { HttpException, type ArgumentsHost } from '@nestjs/common';
 import { AuthRateLimitException } from '../../modules/auth/services/auth-throttle.service';
 import { HttpExceptionFilter } from './http-exception.filter';
-
 describe('HttpExceptionFilter', () => {
   it.each(['preview', 'accept'])(
     'does not reflect secret field names in invitation %s validation errors',
@@ -15,7 +14,7 @@ describe('HttpExceptionFilter', () => {
       const host = {
         switchToHttp: () => ({
           getResponse: () => response,
-          getRequest: () => ({ url: `/api/v1/group-invitations/${action}` }),
+          getRequest: () => ({ url: `/api/v1/space-invitations/${action}` }),
         }),
       } as unknown as ArgumentsHost;
       new HttpExceptionFilter().catch(
@@ -40,7 +39,6 @@ describe('HttpExceptionFilter', () => {
       );
     },
   );
-
   it.each([400, 401, 429, 503])(
     'omits invitation query secrets from normalized %s errors',
     (status) => {
@@ -52,7 +50,7 @@ describe('HttpExceptionFilter', () => {
         };
         response.status.mockReturnValue(response);
         const request = {
-          url: `/custom/v2/GROUP-INVITATIONS/${action}/?token=query-secret&digest=query-digest`,
+          url: `/custom/v2/SPACE-INVITATIONS/${action}/?token=query-secret&digest=query-digest`,
           body: { token: 'body-secret', digest: 'body-digest' },
         };
         const host = {
@@ -61,7 +59,6 @@ describe('HttpExceptionFilter', () => {
             getRequest: () => request,
           }),
         } as unknown as ArgumentsHost;
-
         new HttpExceptionFilter().catch(
           new HttpException(
             { message: 'Request failed', error: 'Error' },
@@ -69,12 +66,11 @@ describe('HttpExceptionFilter', () => {
           ),
           host,
         );
-
         expect(response.json).toHaveBeenCalledWith({
           statusCode: status,
           message: 'Request failed',
           error: 'Error',
-          path: `/custom/v2/GROUP-INVITATIONS/${action}/`,
+          path: `/custom/v2/SPACE-INVITATIONS/${action}/`,
           timestamp: expect.any(String),
         });
         const serialized = JSON.stringify(response.json.mock.calls);
@@ -90,7 +86,6 @@ describe('HttpExceptionFilter', () => {
       }
     },
   );
-
   it('sets Retry-After for persisted authentication blocks', () => {
     const response = {
       setHeader: jest.fn(),
@@ -104,9 +99,7 @@ describe('HttpExceptionFilter', () => {
         getRequest: () => ({ url: '/api/v1/auth/login' }),
       }),
     } as unknown as ArgumentsHost;
-
     new HttpExceptionFilter().catch(new AuthRateLimitException(301), host);
-
     expect(response.setHeader).toHaveBeenCalledWith('Retry-After', '301');
     expect(response.status).toHaveBeenCalledWith(429);
     expect(response.json).toHaveBeenCalledWith(
@@ -117,7 +110,6 @@ describe('HttpExceptionFilter', () => {
     );
     expect(response.json.mock.calls[0][0]).not.toHaveProperty('retryAfter');
   });
-
   it('does not serialize secret-bearing internal exceptions', () => {
     const response = {
       setHeader: jest.fn(),
@@ -139,9 +131,7 @@ describe('HttpExceptionFilter', () => {
       recoveryDigest: 'recovery-digest',
       accessToken: 'signed-access-token',
     });
-
     new HttpExceptionFilter().catch(exception, host);
-
     const payload = response.json.mock.calls[0][0];
     expect(payload).toMatchObject({
       statusCode: 500,

@@ -4,7 +4,6 @@ import { User } from './user.schema';
 
 export const userDeletionStages = [
   'memberships',
-  'personal_finance',
   'auth_data',
   'tombstone',
   'completed',

@@ -1,21 +1,12 @@
-import { ConflictException } from '@nestjs/common';
-import { Connection, Model, Types } from 'mongoose';
-import { AccountsSnapshotsService } from '../../accounts-snapshots/accounts-snapshots.service';
-import { TransactionsService } from '../../transactions/transactions/transactions.service';
-import { UsersService } from '../../users/users.service';
-import { AccountDocument } from '../schemas/accounts.schema';
+import { ConflictException, NotFoundException } from '@nestjs/common';
+import { Types } from 'mongoose';
 import { AccountsService } from './accounts.service';
-import { BudgetWriteService } from '../../budgets/budget-write.service';
-import { GroupsAccessService } from '../../groups/groups-access.service';
 
-describe('AccountsService deletion lifecycle', () => {
-  const userId = '507f1f77bcf86cd799439011';
-  const accountId = '507f1f77bcf86cd799439012';
-  const session = {
-    withTransaction: jest.fn(async (work: () => Promise<unknown>) => work()),
-    endSession: jest.fn(),
-  };
-  const accountModel = {
+describe('space account lifecycle', () => {
+  const budget = { spaceId: new Types.ObjectId() };
+  const accountId = new Types.ObjectId().toString();
+  const session = {} as import('mongoose').ClientSession;
+  const model = {
     create: jest.fn(),
     findOne: jest.fn(),
     findOneAndDelete: jest.fn(),
@@ -24,167 +15,120 @@ describe('AccountsService deletion lifecycle', () => {
   };
   const snapshots = {
     openingForBudget: jest.fn(),
+    balanceForBudget: jest.fn(),
     deleteForBudget: jest.fn(),
   };
-  const transactions = {
-    lockAccounts: jest.fn(),
-    hasHistoryForBudget: jest.fn(),
-    deleteAllByAccountId: jest.fn(),
-  };
-  const users = {
-    ensureIdExists: jest.fn(),
-    selectFirstDefaultAccount: jest.fn(),
-    clearDefaultAccount: jest.fn(),
-  };
+  const transactions = { hasHistoryForBudget: jest.fn() };
   const service = new AccountsService(
-    accountModel as unknown as Model<AccountDocument>,
-    users as unknown as UsersService,
-    snapshots as unknown as AccountsSnapshotsService,
-    transactions as unknown as TransactionsService,
-    new BudgetWriteService(
-      {
-        startSession: jest.fn().mockResolvedValue(session),
-      } as unknown as Connection,
-      {} as GroupsAccessService,
-    ),
+    model as never,
+    snapshots as never,
+    transactions as never,
   );
-
-  function foundAccount(
-    type: 'balance' | 'saving',
-    initialAmount = 0,
-    archivedAt: Date | null = null,
-  ) {
-    accountModel.findOne.mockReturnValue({
+  const found = (type: 'balance' | 'saving', initialAmount = 0) =>
+    model.findOne.mockReturnValue({
       session: () => ({
         lean: () => ({
           exec: async () => ({
-            _id: new Types.ObjectId(accountId),
+            _id: accountId,
             type,
             initialAmount,
-            archivedAt,
+            ...budget,
           }),
         }),
       }),
     });
-  }
-
   beforeEach(() => {
     jest.clearAllMocks();
-    accountModel.findOneAndDelete.mockResolvedValue({ _id: accountId });
-    accountModel.updateOne.mockResolvedValue({ matchedCount: 1 });
-    accountModel.findOneAndUpdate.mockReturnValue({
+    model.updateOne.mockResolvedValue({ matchedCount: 1 });
+    model.findOneAndDelete.mockResolvedValue({ _id: accountId });
+    model.findOneAndUpdate.mockReturnValue({
       lean: () => ({ exec: async () => ({ _id: accountId }) }),
     });
   });
-
-  it('creates another named account of the same type and selects the first matching balance', async () => {
-    const createdId = new Types.ObjectId();
-    users.ensureIdExists.mockResolvedValue(new Types.ObjectId(userId));
-    accountModel.create.mockResolvedValue([
+  it('creates named accounts with an opening snapshot in the same session', async () => {
+    model.create.mockImplementation(async (rows: object[]) => [
+      { ...rows[0], toObject: () => rows[0] },
+    ]);
+    snapshots.balanceForBudget.mockResolvedValue(10);
+    const result = await service.createForBudget(
+      budget,
       {
-        _id: createdId,
+        name: ' Travel ',
         type: 'balance',
         currency: 'USD',
-        name: 'Travel',
-        toObject: () => ({
-          _id: createdId,
-          type: 'balance',
-          currency: 'USD',
-          name: 'Travel',
-        }),
+        amount: 10,
+        openedAt: '2026-01-01',
       },
-    ]);
-    snapshots.openingForBudget.mockResolvedValue({ amount: 10 });
-
-    await service.create(userId, {
+      session,
+    );
+    expect(result).toMatchObject({
+      ...budget,
       name: 'Travel',
-      type: 'balance',
-      currency: 'USD',
+      initialAmount: 10,
       amount: 10,
+      openedAt: new Date('2026-01-01'),
     });
-
-    expect(accountModel.findOne).not.toHaveBeenCalled();
-    expect(users.selectFirstDefaultAccount).toHaveBeenCalledWith(
-      userId,
-      createdId,
-      'USD',
+    expect(model.create).toHaveBeenCalledWith(
+      [expect.objectContaining({ ...budget, currency: 'USD' })],
+      { session },
+    );
+    expect(snapshots.openingForBudget).toHaveBeenCalledWith(
+      expect.objectContaining(budget),
       session,
     );
   });
-
   it.each(['balance', 'saving'] as const)(
-    'rejects deleting a %s account with transaction history without changing snapshots',
+    'restricts deleting a %s account with financial history',
     async (type) => {
-      foundAccount(type);
+      found(type);
       transactions.hasHistoryForBudget.mockResolvedValue(true);
-
       await expect(
-        service.deleteEntity(userId, accountId),
+        service.removeForBudget(budget, accountId, session),
       ).rejects.toBeInstanceOf(ConflictException);
-
       expect(snapshots.deleteForBudget).not.toHaveBeenCalled();
-      expect(accountModel.findOneAndDelete).not.toHaveBeenCalled();
-      expect(transactions.deleteAllByAccountId).not.toHaveBeenCalled();
+      expect(model.findOneAndDelete).not.toHaveBeenCalled();
     },
   );
-
-  it('rejects deleting an account with a non-zero initial balance', async () => {
-    foundAccount('balance', 10);
-
+  it('restricts deleting a nonzero opening balance', async () => {
+    found('balance', 10);
     await expect(
-      service.deleteEntity(userId, accountId),
+      service.removeForBudget(budget, accountId, session),
     ).rejects.toBeInstanceOf(ConflictException);
-
     expect(transactions.hasHistoryForBudget).not.toHaveBeenCalled();
     expect(snapshots.deleteForBudget).not.toHaveBeenCalled();
   });
-
-  it('deletes only snapshots with an unused zero-balance account', async () => {
-    foundAccount('balance');
+  it('deletes snapshots only for an unused zero-balance account', async () => {
+    found('balance');
     transactions.hasHistoryForBudget.mockResolvedValue(false);
-
-    await service.deleteEntity(userId, accountId);
-
+    await service.removeForBudget(budget, accountId, session);
     expect(snapshots.deleteForBudget).toHaveBeenCalledWith(
-      {
-        userId: new Types.ObjectId(userId),
-        ownerType: 'user',
-        ownerId: new Types.ObjectId(userId),
-      },
+      budget,
       accountId,
       session,
     );
-    expect(transactions.deleteAllByAccountId).not.toHaveBeenCalled();
-    expect(accountModel.findOneAndDelete).toHaveBeenCalled();
-    expect(users.clearDefaultAccount).toHaveBeenCalledWith(
-      userId,
-      accountId,
-      session,
+    expect(model.findOneAndDelete).toHaveBeenCalledWith(
+      { _id: accountId, ...budget },
+      { session },
     );
   });
-
-  it('archives an owned active account inside the account lock', async () => {
-    await service.archive(userId, accountId);
-
-    expect(accountModel.updateOne).toHaveBeenCalledWith(
-      expect.objectContaining({ _id: accountId }),
+  it('archives within the space-scoped account lock', async () => {
+    await service.archiveForBudget(budget, accountId, session);
+    expect(model.updateOne).toHaveBeenCalledWith(
+      { _id: accountId, ...budget },
       { $inc: { mutationVersion: 1 } },
       { session },
     );
-    expect(accountModel.findOneAndUpdate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        _id: accountId,
-        ownerType: 'user',
-        ownerId: new Types.ObjectId(userId),
-        archivedAt: null,
-      }),
+    expect(model.findOneAndUpdate).toHaveBeenCalledWith(
+      { _id: accountId, ...budget, archivedAt: null },
       { $set: { archivedAt: expect.any(Date) } },
       expect.objectContaining({ session }),
     );
-    expect(users.clearDefaultAccount).toHaveBeenCalledWith(
-      userId,
-      accountId,
-      session,
-    );
+  });
+  it('rejects a foreign account before deleting any snapshots', async () => {
+    model.updateOne.mockResolvedValue({ matchedCount: 0 });
+    await expect(
+      service.removeForBudget(budget, accountId, session),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    expect(snapshots.deleteForBudget).not.toHaveBeenCalled();
   });
 });

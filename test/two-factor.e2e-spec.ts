@@ -33,7 +33,7 @@ describe('TOTP two-factor authentication (e2e)', () => {
       secretsPath,
       JSON.stringify({
         MONGO_URI: replica.uri.replace(
-          '/babki_groups_test?',
+          '/babki_spaces_test?',
           `/${databaseName}?`,
         ),
         JWT_SECRET: randomBytes(48).toString('base64url'),
@@ -75,7 +75,6 @@ describe('TOTP two-factor authentication (e2e)', () => {
         lastName: 'Lovelace',
         email: 'ada.e2e@example.com',
         password,
-        currency: 'USD',
       })
       .expect(201);
     const initialToken = registration.body.accessToken as string;
@@ -281,7 +280,6 @@ describe('TOTP two-factor authentication (e2e)', () => {
         lastName: 'Hopper',
         email: 'pending.e2e@example.com',
         password,
-        currency: 'USD',
       })
       .expect(201);
     const pendingToken = pendingRegistration.body.accessToken as string;
@@ -298,7 +296,6 @@ describe('TOTP two-factor authentication (e2e)', () => {
         lastName: 'Johnson',
         email: 'blocked.e2e@example.com',
         password,
-        currency: 'USD',
       })
       .expect(201);
     const blockedInitialToken = blockedRegistration.body.accessToken as string;
@@ -402,7 +399,6 @@ describe('TOTP two-factor authentication (e2e)', () => {
         lastName: 'Vaughan',
         email: 'gated.e2e@example.com',
         password,
-        currency: 'USD',
       })
       .expect(201);
     await request(app.getHttpServer())
