@@ -8,12 +8,12 @@
 
 ### Requirement: Group debt access and attribution
 
-Любой действующий участник SHALL создавать и читать долг группы и историю. Изменение, погашение, отмена, архивирование и удаление SHALL требовать действующего автора долга, владельца либо manageTransactions. Автор погашения SHALL фиксироваться отдельно и сам по себе не давать полномочий. JWT SHALL быть обязателен; недоступный бюджет/объект SHALL давать 404, недостаточные права участника — 403.
+Любой действующий участник SHALL создавать и читать долг пространства и историю. Изменение, погашение, отмена, архивирование и удаление SHALL требовать действующего автора долга, владельца либо manageTransactions. Автор погашения SHALL фиксироваться отдельно и сам по себе не давать полномочий. JWT SHALL быть обязателен; недоступный бюджет/объект SHALL давать 404, недостаточные права участника — 403.
 
 #### Scenario: Delegate repays another member debt
 
 - **WHEN** действующий делегат погашает долг другого участника
-- **THEN** автор долга сохраняется, автор истории и дохода равен исполнителю, бюджет остаётся групповым
+- **THEN** автор долга сохраняется, автор истории и дохода равен исполнителю, бюджет остаётся общим
 
 #### Scenario: Repayment author loses delegation
 
@@ -22,7 +22,7 @@
 
 ### Requirement: Receivable debt starts without a financial movement
 
-Групповой долг SHALL означать только «нам должны» и создаваться с debtor, положительной principalAmount и поддерживаемой неизменяемой currency. Remaining SHALL равняться principal, status — active. Создание SHALL не двигать деньги. Description и dueDate SHALL быть необязательными. Client owner/creator/remaining/status/direction SHALL отклоняться с 400.
+Общий долг SHALL означать только «нам должны» и создаваться с debtor, положительной principalAmount и поддерживаемой неизменяемой currency. Remaining SHALL равняться principal, status — active. Создание SHALL не двигать деньги. Description и dueDate SHALL быть необязательными. Client owner/creator/remaining/status/direction SHALL отклоняться с 400.
 
 #### Scenario: Create a shared receivable
 
@@ -50,7 +50,7 @@ PATCH SHALL менять только debtor, description, dueDate и principalA
 
 ### Requirement: Shared debt history is explicit and stable
 
-Долги SHALL возвращать бюджет, автора и createdByActor; история — автора погашения, isIncome, сумму/дату, incomeId для финансовой записи и cancelledAt/cancelledBy/cancelledByActor при отмене. Групповые DTO SHALL не содержать userId, participantId или фиктивный type. Список долгов SHALL иметь pagination/status/currency/includeArchived; история SHALL включать отменённые записи. Архивные детали и история SHALL читаться действующим участником.
+Долги SHALL возвращать бюджет, автора и createdByActor; история — автора погашения, isIncome, сумму/дату, incomeId для финансовой записи и cancelledAt/cancelledBy/cancelledByActor при отмене. Общие DTO SHALL не содержать userId, participantId или фиктивный type. Список долгов SHALL иметь pagination/status/currency/includeArchived; история SHALL включать отменённые записи. Архивные детали и история SHALL читаться действующим участником.
 
 #### Scenario: Deterministic pages and historical actors
 
@@ -73,16 +73,16 @@ PATCH SHALL менять только debtor, description, dueDate и principalA
 
 ### Requirement: Financial repayment creates one group income
 
-При isIncome=true SHALL требоваться активный accountId того же бюджета и валюты, дата не раньше openedAt. Доход SHALL создаваться на сумму погашения с автором-исполнителем и origin долга, а история SHALL сохранять точный incomeId. Доход SHALL учитываться один раз обычными денежными механизмами; групповые расходы/лимиты SHALL от него не меняться.
+При isIncome=true SHALL требоваться активный accountId того же бюджета и валюты, дата не раньше openedAt. Доход SHALL создаваться на сумму погашения с автором-исполнителем и origin долга, а история SHALL сохранять точный incomeId. Доход SHALL учитываться один раз обычными денежными механизмами; общие расходы/лимиты SHALL от него не меняться.
 
 #### Scenario: Receive into a group account
 
-- **WHEN** долг USD 100 погашается финансово на 40 USD на счёт группы
-- **THEN** remaining=60, один доход 40 с origin долга и incomeId истории увеличивает счёт и доходы отчёта на 40; личные деньги не меняются
+- **WHEN** долг USD 100 погашается финансово на 40 USD на счёт пространства
+- **THEN** remaining=60, один доход 40 с origin долга и incomeId истории увеличивает счёт и доходы отчёта на 40; деньги других пространств не меняются
 
 #### Scenario: Reject invalid financial references
 
-- **WHEN** передан личный/чужой/архивный счёт, другая валюта либо дата до открытия
+- **WHEN** передан счёт другого пространства или архивный счёт, другая валюта либо дата до открытия
 - **THEN** чужой/архивный счёт даёт 404, валюта/ранняя дата — 400, долг/история/деньги не меняются
 
 ### Requirement: Repayment cancellation preserves history and reverses effects
@@ -97,15 +97,15 @@ PATCH SHALL менять только debtor, description, dueDate и principalA
 #### Scenario: Cancel noncash or spent income
 
 - **WHEN** отменяется некассовая запись либо финансовый доход уже потрачен
-- **THEN** первая отмена меняет только долг/историю, вторая компенсирует доход по обычной групповой политике, допускающей отрицательный остаток
+- **THEN** первая отмена меняет только долг/историю, вторая компенсирует доход по обычной общей политике, допускающей отрицательный остаток
 
 ### Requirement: Linked group income is changed only by cancellation
 
-Обычные PATCH/DELETE дохода группового погашения SHALL возвращать 409 после проверки доступа, полномочий и активного счёта; архивный счёт SHALL давать 404. Отмена SHALL использовать сохранённый incomeId и проверять бюджет, origin, валюту, сумму и дату; несогласованная/уже удалённая ссылка SHALL давать 409 без частичных effects. Личные origin-доходы SHALL сохранять прежнее поведение.
+Обычные PATCH/DELETE дохода общего погашения SHALL возвращать 409 после проверки доступа, полномочий и активного счёта; архивный счёт SHALL давать 404. Отмена SHALL использовать сохранённый incomeId и проверять бюджет, origin, валюту, сумму и дату; несогласованная/уже удалённая ссылка SHALL давать 409 без частичных effects.
 
 #### Scenario: Prevent separate financial correction
 
-- **WHEN** уполномоченный пользователь меняет сумму/описание или удаляет связанный групповой доход обычным income API
+- **WHEN** уполномоченный пользователь меняет сумму/описание или удаляет связанный общий доход обычным income API
 - **THEN** получает 409; долг, история и денежный факт сохраняются до отмены погашения
 
 ### Requirement: Debt archive freezes mutation and retains references
@@ -130,17 +130,3 @@ PATCH SHALL менять только debtor, description, dueDate и principalA
 
 - **WHEN** сбой происходит после создания/удаления дохода, изменения долга/истории либо actor lookup
 - **THEN** remaining/status, история, доход, счета, снимки и версии полностью откатываются
-
-### Requirement: Debt ownership migration preserves personal history
-
-Личные Debt/DebtTransaction SHALL получить достоверные budget/creator из userId и родителя без изменения сумм, remaining/status, дат, архива, доходов/origin или личного DTO. Backfill SHALL иметь dry-run/explicit apply, повтор0 и защиту от конкурентного назначения owner. Конфликты и отсутствующие ссылки SHALL диагностироваться; legacy incomeId SHALL не угадываться.
-
-#### Scenario: Migrate personal debt and repayments safely
-
-- **WHEN** dry-run, apply и повтор выполняются на личных долгах с ручным remaining и на tombstone владельце
-- **THEN** dry-run не пишет, apply добавляет только достоверные отсутствующие поля, повтор не меняет записи; финансовая история и её личный смысл сохранены
-
-#### Scenario: Ambiguous references or concurrent ownership
-
-- **WHEN** поля owner конфликтуют, ID имеют строковый тип, родитель отсутствует/чужой либо owner назначен конкурентом
-- **THEN** проблемная запись не переписывается, отчёт объясняет причину, групповые записи не мигрируются и связь дохода не назначается по совпадениям
