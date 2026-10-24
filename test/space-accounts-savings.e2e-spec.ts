@@ -60,6 +60,65 @@ describe('Multiple space accounts and direct savings', () => {
   afterAll(async () => {
     await ctx?.close();
   });
+  it('uses the current UTC month end for account balances and excludes later months', async () => {
+    const base = await space();
+    const now = new Date();
+    const monthEnd = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1) - 1,
+    ).toISOString();
+    const nextMonth = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1),
+    ).toISOString();
+    const source = idOf(await create(base, { amount: 100000 }).expect(201));
+    const destination = idOf(
+      await create(base, { type: 'saving' }).expect(201),
+    );
+    await api('post', `${base}/transfers`)
+      .send({
+        sourceAccountId: source,
+        destinationAccountId: destination,
+        sourceAmount: 50000,
+        destinationAmount: 50000,
+        transactionDate: monthEnd,
+      })
+      .expect(201);
+    await api('post', `${base}/incomes`)
+      .send({ accountId: source, amount: 90000, transactionDate: nextMonth })
+      .expect(201);
+    for (const [accountId, amount] of [
+      [source, 50000],
+      [destination, 50000],
+    ] as const) {
+      const expected = {
+        _id: accountId,
+        amount,
+        timeline: expect.arrayContaining([
+          expect.objectContaining({ date: monthEnd, amount }),
+        ]) as unknown[],
+      };
+      expect(
+        (await api('get', `${base}/accounts/${accountId}`).expect(200)).body,
+      ).toMatchObject(expected);
+      expect((await api('get', `${base}/accounts`).expect(200)).body).toEqual(
+        expect.arrayContaining([expect.objectContaining(expected)]),
+      );
+      expect(
+        (
+          await api('patch', `${base}/accounts/${accountId}`)
+            .send({ name: 'Renamed' })
+            .expect(200)
+        ).body,
+      ).toMatchObject(expected);
+    }
+    expect(
+      (await create(base, { amount: 100, openedAt: monthEnd }).expect(201))
+        .body,
+    ).toMatchObject({ amount: 100 });
+    expect(
+      (await create(base, { amount: 100, openedAt: nextMonth }).expect(201))
+        .body,
+    ).toMatchObject({ amount: 0 });
+  });
   it('creates independent same-name accounts, filters type/currency and isolates owners', async () => {
     const base = await space();
     expect((await api('get', `${base}/accounts`).expect(200)).body).toEqual([]);

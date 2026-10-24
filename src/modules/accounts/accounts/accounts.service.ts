@@ -12,7 +12,10 @@ import {
   hasValidMoneyPrecision,
   normalizeCurrency,
 } from 'src/common/money/money';
-import { AccountsSnapshotsService } from 'src/modules/accounts-snapshots/accounts-snapshots.service';
+import {
+  AccountsSnapshotsService,
+  utcMonthEnd,
+} from 'src/modules/accounts-snapshots/accounts-snapshots.service';
 import { TransactionsService } from 'src/modules/transactions/transactions/transactions.service';
 import { FindAccountQueryDto } from '../dto/find-query.dto';
 import {
@@ -61,7 +64,7 @@ export class AccountsService {
       ...createdEntity.toObject(),
       amount: await this.snapshotsService.balanceForBudget(
         createdEntity,
-        new Date(),
+        utcMonthEnd(new Date()),
         session,
       ),
       timeline: [],
@@ -97,12 +100,13 @@ export class AccountsService {
     },
     session?: ClientSession,
   ) {
+    const balanceDate = utcMonthEnd(new Date());
     return Promise.all(
       accounts.map(async (account) => ({
         ...account,
         amount: await this.snapshotsService.balanceForBudget(
           account,
-          new Date(),
+          balanceDate,
           session,
         ),
         timeline: await this.snapshotsService.timelineForBudget(
